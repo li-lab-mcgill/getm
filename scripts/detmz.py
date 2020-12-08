@@ -219,40 +219,40 @@ class ETM(nn.Module):
         beta2 = self.calc_beta(alpha, self.rho2, self.train_embeddings2)
         return beta1, beta2
 
-    def get_likelihood(self, theta, beta, bows, base_freq):
+    def get_likelihood(self, theta, beta, bows, age, base_freq):
         kld_z = []
         log_likelihood = []
 
         for t in range(self.num_times):
+            if len(theta[age == t]) > 0:
+                pi_t = torch.bmm(beta[t].unsqueeze(2), theta.T.unsqueeze(1)).T  # D*V*K
+                pi_t = F.softmax(pi_t, dim=-1)
+                z_t = F.gumbel_softmax(pi_t, dim=-1, hard=True)
+                kld_z_t = -torch.sum(torch.bmm(z_t, torch.log(theta[age == t]).unsqueeze(2)), dim=-1).mean() - \
+                    torch.sum(torch.sum(pi_t * z_t, dim=-1) * torch.sum(torch.log(pi_t) * z_t, dim=-1), dim=-1).mean()
 
-            pi_t = torch.bmm(beta[t].unsqueeze(2), theta.T.unsqueeze(1)).T  # D*V*K
-            pi_t = F.softmax(pi_t, dim=-1)
-            z_t = F.gumbel_softmax(pi_t, dim=-1, hard=True)
-            kld_z_t = -torch.sum(torch.bmm(z_t, torch.log(theta).unsqueeze(2)), dim=-1).mean() - \
-                torch.sum(torch.sum(pi_t * z_t, dim=-1) * torch.sum(torch.log(pi_t) * z_t, dim=-1), dim=-1).mean()
+                beta_z_t = torch.stack([beta[t].T for _ in range(z_t.size[0])]) # D*V*K
 
-            beta_z_t = beta[t]*(z_t.mean(0)).T
-            theta_z_t = theta*z_t.mean(1)
-            if self.add_freq:
-                freq = torch.stack([base_freq for _ in range(bows.size(0))])
-                res_t = torch.mm(theta_z_t, beta_z_t)/freq
+                if self.add_freq:
+                    freq = torch.stack([base_freq for _ in range(bows.size(0))])
+                    res_t = (beta_z_t * z_t).sum(-1)/freq # D*V e.g. at -1 dimension: [0.0000, 0.0000, 0.8925, 0.0000] --> 0.8925
 
-            else:
-                res_t = torch.mm(theta_z_t, beta_z_t)
-            preds_t = torch.log(res_t)
-            log_likelihood_t = (preds_t * bows).sum(1).mean()
-            kld_z.append(kld_z_t)
-            log_likelihood.append(log_likelihood_t)
+                else:
+                    res_t = (beta_z_t * z_t).sum(-1)
+                preds_t = torch.log(res_t)
+                log_likelihood_t = (preds_t * bows[age == t]).sum(1).mean()
+                kld_z.append(kld_z_t)
+                log_likelihood.append(log_likelihood_t)
         kld_z = torch.stack(kld_z).sum()
         log_likelihood = torch.stack(log_likelihood).sum()
         return kld_z, log_likelihood
 
-    def decode(self, theta, beta1, beta2, bows):
+    def decode(self, theta, beta1, beta2, bows, age):
         bows1 = bows[:, :self.vocab_size1]
         bows2 = bows[:, -self.vocab_size2:]
 
-        kld_z1, log_likelihood1 = self.get_likelihood(theta, beta1, bows1, self.base_freq1)
-        kld_z2, log_likelihood2 = self.get_likelihood(theta, beta2, bows2, self.base_freq2)
+        kld_z1, log_likelihood1 = self.get_likelihood(theta, beta1, bows1, age, self.base_freq1)
+        kld_z2, log_likelihood2 = self.get_likelihood(theta, beta2, bows2, age, self.base_freq2)
 
         return kld_z1, log_likelihood1, kld_z2, log_likelihood2
 
@@ -267,7 +267,7 @@ class ETM(nn.Module):
 
 
         ## get prediction loss
-        kld_z1, log_likelihood1, kld_z2, log_likelihood2 = self.decode(theta, beta1, beta2, bows)
+        kld_z1, log_likelihood1, kld_z2, log_likelihood2 = self.decode(theta, beta1, beta2, bows, age)
         recon_loss = -log_likelihood1-log_likelihood2
 
         return recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha, kld_eta1

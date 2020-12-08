@@ -279,7 +279,7 @@ def evaluate(m, tc=False, td=False):
             theta, _ = m.get_theta(eta1, normalized_data_batch, age)
 
             # print("sums_2: {}".format(sums_2.squeeze()))
-            _, log_likelihood1, _, log_likelihood2 = m.decode(theta, beta1, beta2, data_batch)
+            _, log_likelihood1, _, log_likelihood2 = m.decode(theta, beta1, beta2, data_batch, age)
             recon_loss = -log_likelihood1 - log_likelihood2
 
             loss = recon_loss / sums.squeeze()
