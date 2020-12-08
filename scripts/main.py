@@ -10,7 +10,7 @@ import math
 import pickle
 from torch.utils.data import DataLoader
 from torch import nn, optim
-from etm4 import ETM
+from detmz import ETM
 from utils import nearest_neighbors, get_topic_coherence, get_topic_diversity
 from dataset import PatientDrugDataset, PatientDrugTestDataset, MTDataset
 
@@ -57,7 +57,8 @@ parser.add_argument('--mode', type=str, default='train', help='train or eval mod
 parser.add_argument('--optimizer', type=str, default='adam', help='choice of optimizer')
 parser.add_argument('--seed', type=int, default=2020, help='random seed (default: 1)')
 
-parser.add_argument('--enc_drop', type=float, default=0.1, help='dropout rate on encoder')
+parser.add_argument('--enc_drop', type=float, default=0.0, help='dropout rate on encoder')
+parser.add_argument('--eta_dropout', type=float, default=0.0, help='dropout rate on rnn for eta')
 parser.add_argument('--clip', type=float, default=2.0, help='gradient clipping')
 
 parser.add_argument('--nonmono', type=int, default=5, help='number of bad hits allowed')
@@ -107,13 +108,13 @@ if args.add_freq:
 
 rnn_inp_age_train = np.load(f"{args.data_path}/rnn_inp_age_train.npy")
 rnn_inp_visits_train = np.load(f"{args.data_path}/rnn_inp_visits_train.npy")
-rnn_inp_age_train = torch.from_numpy(rnn_inp_age_train).to(device)
-rnn_inp_visits_train = torch.from_numpy(rnn_inp_visits_train).to(device)
+rnn_inp_age_train = torch.from_numpy(rnn_inp_age_train).float().to(device)
+rnn_inp_visits_train = torch.from_numpy(rnn_inp_visits_train).float().to(device)
 
 rnn_inp_age_test = np.load(f"{args.data_path}/rnn_inp_age_test.npy")
 rnn_inp_visits_test = np.load(f"{args.data_path}/rnn_inp_visits_test.npy")
-rnn_inp_age_test = torch.from_numpy(rnn_inp_age_test).to(device)
-rnn_inp_visits_test = torch.from_numpy(rnn_inp_visits_test).to(device)
+rnn_inp_age_test = torch.from_numpy(rnn_inp_age_test).float().to(device)
+rnn_inp_visits_test = torch.from_numpy(rnn_inp_visits_test).float().to(device)
 
 ## define checkpoint
 if not os.path.exists(args.save_path):
@@ -131,7 +132,7 @@ else:
 model = ETM(args.num_topics, args.num_times, args.num_visits, args.vocab_size1, args.vocab_size2,
             args.eta_hidden_size, args.t_hidden_size, args.rho_size, args.emb_size,
             args.theta_act, args.delta, args.nlayer, embeddings1, embeddings2, args.train_embeddings1,
-            args.train_embeddings2, args.enc_drop, args.add_freq, base_freq1, base_freq2).to(device)
+            args.train_embeddings2, args.enc_drop, args.eta_dropout, args.add_freq, base_freq1, base_freq2).to(device)
 
 print('model: {}'.format(model))
 
@@ -178,10 +179,10 @@ def train(epoch):
             normalized_data_batch = data_batch / sums
         else:
             normalized_data_batch = data_batch
-        recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha, kld_eta1, kld_eta2 = \
+        recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha, kld_eta1 = \
             model(data_batch, normalized_data_batch,rnn_inp_age_train, rnn_inp_visits_train, age, visits)
 
-        total_loss = recon_loss + kld_theta + kld_z1 + kld_z2 + kld_alpha + kld_eta1 + kld_eta2
+        total_loss = recon_loss + kld_theta + kld_z1 + kld_z2 + kld_alpha + kld_eta1
         total_loss.backward()
 
         if args.clip > 0:
@@ -194,7 +195,7 @@ def train(epoch):
         acc_kl_z2_loss += torch.sum(kld_z2).item()
         acc_kl_alpha_loss += torch.sum(kld_alpha).item()
         acc_kl_eta1_loss += torch.sum(kld_eta1).item()
-        acc_kl_eta2_loss += torch.sum(kld_eta2).item()
+        # acc_kl_eta2_loss += torch.sum(kld_eta2).item()
 
         cnt += 1
 
@@ -207,13 +208,13 @@ def train(epoch):
             cur_kl_z2 = round(acc_kl_z2_loss / cnt, 2)
             cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2)
             cur_kl_eta1 = round(acc_kl_eta1_loss / cnt, 2)
-            cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
+            # cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
 
-            cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1 + cur_kl_eta2, 2)
+            cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1, 2)
             print('Epoch: {} .. batch: {} .. LR: {} .. KL_theta: {} .. KL_z1: {} .. KL_z2: {} .. '
-                      'Rec_loss: {} .. KL_alpha: {} .. KL_eta_age: {} .. KL_eta_visits: {} .. NELBO: {}'.
+                      'Rec_loss: {} .. KL_alpha: {} .. KL_eta_age: {} .. NELBO: {}'.
                     format(epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_kl_z1, cur_kl_z2, cur_loss,
-                           cur_kl_alpha, cur_kl_eta1, cur_kl_eta2, cur_real_loss))
+                           cur_kl_alpha, cur_kl_eta1, cur_real_loss))
 
 
     cur_loss = round(acc_loss / cnt, 2)
@@ -222,14 +223,14 @@ def train(epoch):
     cur_kl_z2 = round(acc_kl_z2_loss / cnt, 2)
     cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2)
     cur_kl_eta1 = round(acc_kl_eta1_loss / cnt, 2)
-    cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
+    # cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
 
-    cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1 + cur_kl_eta2, 2)
+    cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1, 2)
     print('*' * 100)
     print('Epoch----->{} .. LR: {} .. KL_theta: {} .. KL_z1: {} .. KL_z2: {} .. Rec_loss: {} .. KL_alpha {} ..'
-          'KL_eta_age: {} .. KL_eta_visits: {} .. NELBO: {}'.
+          'KL_eta_age: {} .. NELBO: {}'.
           format(epoch, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_kl_z1, cur_kl_z2,
-                               cur_loss, cur_kl_alpha, cur_kl_eta1, cur_kl_eta2, cur_real_loss))
+                               cur_loss, cur_kl_alpha, cur_kl_eta1, cur_real_loss))
     print('*' * 100)
 
 
@@ -275,7 +276,7 @@ def evaluate(m, tc=False, td=False):
                 normalized_data_batch = data_batch / sums
             else:
                 normalized_data_batch = data_batch
-            theta, _ = m.get_theta(eta1, eta2, normalized_data_batch, age, visits)
+            theta, _ = m.get_theta(eta1, normalized_data_batch, age)
 
             # print("sums_2: {}".format(sums_2.squeeze()))
             _, log_likelihood1, _, log_likelihood2 = m.decode(theta, beta1, beta2, data_batch)
@@ -381,8 +382,8 @@ visits_file = os.path.join(args.data_path, "visits.npy")
 
 rnn_inp_age = np.load(f"{args.data_path}/rnn_inp_age.npy")
 rnn_inp_visits = np.load(f"{args.data_path}/rnn_inp_visits.npy")
-rnn_inp_age = torch.from_numpy(rnn_inp_age).to(device)
-rnn_inp_visits = torch.from_numpy(rnn_inp_visits).to(device)
+rnn_inp_age = torch.from_numpy(rnn_inp_age).float().to(device)
+rnn_inp_visits = torch.from_numpy(rnn_inp_visits).float().to(device)
 
 Dataset = MTDataset(filename, age_file, visits_file)
 MyDataloader = DataLoader(Dataset, batch_size=100000,
@@ -396,7 +397,7 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     data_batch = sample_batch['Data'].float().to(device)
     age = sample_batch["Age"].long().to(device)
     visits = sample_batch["Visits"].long().to(device)
-    theta, _ = model.get_theta(eta1, eta2, data_batch, age, visits)
+    theta, _ = model.get_theta(eta1, data_batch, age)
     theta = theta.detach().cpu().numpy()
     saved_folder = os.path.join(args.save_path, "theta")
     if not os.path.exists(saved_folder):

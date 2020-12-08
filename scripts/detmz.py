@@ -11,7 +11,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class ETM(nn.Module):
     def __init__(self, num_topics, num_times, num_visits, vocab_size1, vocab_size2, eta_hidden_size, t_hidden_size,
                  rho_size, emsize, theta_act, delta, nlayer, embeddings1=None, embeddings2=None, train_embeddings1=True,
-                 train_embeddings2=True, enc_drop=0.5, add_freq=False, base_freq1=None, base_freq2=None):
+                 train_embeddings2=True, enc_drop=0.1, eta_drop=0.1, add_freq=False, base_freq1=None, base_freq2=None):
         super(ETM, self).__init__()
 
         ## define hyperparameters
@@ -23,6 +23,7 @@ class ETM(nn.Module):
         self.rho_size = rho_size
 
         self.enc_drop = enc_drop
+        self.eta_drop = eta_drop
         self.emsize = emsize
         self.t_drop = nn.Dropout(enc_drop)
         # self.beta = nn.Parameter(torch.randn(num_topics, vocab_size))
@@ -73,7 +74,7 @@ class ETM(nn.Module):
 
         ## define variational distribution for \eta via amortizartion... eta is K x T
         self.q_eta_map = nn.Linear(self.vocab_size1+self.vocab_size2, self.eta_hidden_size)
-        self.q_eta = nn.LSTM(self.eta_hidden_size, self.eta_hidden_size, self.eta_nlayers, dropout=self.dropout)
+        self.q_eta = nn.LSTM(self.eta_hidden_size, self.eta_hidden_size, self.nlayer, dropout=self.eta_drop)
         self.mu_q_eta = nn.Linear(self.eta_hidden_size+self.num_topics, self.num_topics, bias=True)
         self.logsigma_q_eta = nn.Linear(self.eta_hidden_size+self.num_topics, self.num_topics, bias=True)
 
@@ -176,12 +177,12 @@ class ETM(nn.Module):
         kl_eta = torch.stack(kl_eta).sum()
         return etas, kl_eta
 
-    def get_theta(self, eta_age, eta_visit, bows, age, visits): ## amortized inference
+    def get_theta(self, eta_age, bows, age): ## amortized inference
         """Returns the topic proportions.
         """
-        eta_t = eta_age[age.type('torch.LongTensor')]
-        eta_v = eta_visit[visits.type('torch.LongTensor')]
-        eta_td = (eta_t + eta_v)/2
+        eta_td = eta_age[age.type('torch.LongTensor')]
+
+
         inp = torch.cat([bows, eta_td], dim=1)
         q_theta = self.q_theta(inp)
         if self.enc_drop > 0:
@@ -197,7 +198,7 @@ class ETM(nn.Module):
         """Initializes the first hidden state of the RNN used as inference network for \eta.
         """
         weight = next(self.parameters())
-        nlayers = self.eta_nlayers
+        nlayers = self.nlayer
         nhid = self.eta_hidden_size
         return (weight.new_zeros(nlayers, 1, nhid), weight.new_zeros(nlayers, 1, nhid))
 
@@ -221,24 +222,25 @@ class ETM(nn.Module):
     def get_likelihood(self, theta, beta, bows, base_freq):
         kld_z = []
         log_likelihood = []
-        freq = torch.stack([base_freq for _ in range(bows.size(0))])
+
         for t in range(self.num_times):
 
-            pi_t = torch.bmm(beta[t].unsqueeze(2), theta[t].T.unsqueeze(1)).T  # D*V*K
+            pi_t = torch.bmm(beta[t].unsqueeze(2), theta.T.unsqueeze(1)).T  # D*V*K
             pi_t = F.softmax(pi_t, dim=-1)
             z_t = F.gumbel_softmax(pi_t, dim=-1, hard=True)
-            kld_z_t = -torch.sum(torch.bmm(z_t, torch.log(theta[t]).unsqueeze(2)), dim=-1).mean() - \
+            kld_z_t = -torch.sum(torch.bmm(z_t, torch.log(theta).unsqueeze(2)), dim=-1).mean() - \
                 torch.sum(torch.sum(pi_t * z_t, dim=-1) * torch.sum(torch.log(pi_t) * z_t, dim=-1), dim=-1).mean()
 
             beta_z_t = beta[t]*(z_t.mean(0)).T
-            theta_z_t = theta[t]*z_t.mean(1)
+            theta_z_t = theta*z_t.mean(1)
             if self.add_freq:
+                freq = torch.stack([base_freq for _ in range(bows.size(0))])
                 res_t = torch.mm(theta_z_t, beta_z_t)/freq
 
             else:
                 res_t = torch.mm(theta_z_t, beta_z_t)
             preds_t = torch.log(res_t)
-            log_likelihood_t = (preds_t * bows[:, t, :]).sum(1).mean()
+            log_likelihood_t = (preds_t * bows).sum(1).mean()
             kld_z.append(kld_z_t)
             log_likelihood.append(log_likelihood_t)
         kld_z = torch.stack(kld_z).sum()
@@ -246,8 +248,8 @@ class ETM(nn.Module):
         return kld_z, log_likelihood
 
     def decode(self, theta, beta1, beta2, bows):
-        bows1 = bows[:, :, :self.vocab_size1]
-        bows2 = bows[:, :, -self.vocab_size2:]
+        bows1 = bows[:, :self.vocab_size1]
+        bows2 = bows[:, -self.vocab_size2:]
 
         kld_z1, log_likelihood1 = self.get_likelihood(theta, beta1, bows1, self.base_freq1)
         kld_z2, log_likelihood2 = self.get_likelihood(theta, beta2, bows2, self.base_freq2)
@@ -261,12 +263,11 @@ class ETM(nn.Module):
         ## get \beta
         beta1, beta2 = self.get_beta(alpha)
         eta1, kld_eta1 = self.get_eta(rnn_inp_age, self.num_times)
-        eta2, kld_eta2 = self.get_eta(rnn_inp_visit, self.num_visits)
-        theta, kld_theta = self.get_theta(eta1, eta2, normalized_bows, age, visits)
+        theta, kld_theta = self.get_theta(eta1, normalized_bows, age)
 
 
         ## get prediction loss
         kld_z1, log_likelihood1, kld_z2, log_likelihood2 = self.decode(theta, beta1, beta2, bows)
         recon_loss = -log_likelihood1-log_likelihood2
 
-        return recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha, kld_eta1, kld_eta2
+        return recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha, kld_eta1
