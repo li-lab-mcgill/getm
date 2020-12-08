@@ -231,7 +231,7 @@ class ETM(nn.Module):
                 kld_z_t = -torch.sum(torch.bmm(z_t, torch.log(theta[age == t]).unsqueeze(2)), dim=-1).mean() - \
                     torch.sum(torch.sum(pi_t * z_t, dim=-1) * torch.sum(torch.log(pi_t) * z_t, dim=-1), dim=-1).mean()
 
-                beta_z_t = torch.stack([beta[t].T for _ in range(z_t.size[0])]) # D*V*K
+                beta_z_t = torch.stack([beta[t].T for _ in range(z_t.size(0))]) # D*V*K
 
                 if self.add_freq:
                     freq = torch.stack([base_freq for _ in range(bows.size(0))])
