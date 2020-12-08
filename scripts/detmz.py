@@ -9,8 +9,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class ETM(nn.Module):
-    def __init__(self, num_topics, num_times, vocab_size1, vocab_size2, t_hidden_size, rho_size, emsize,
-                 theta_act, delta, nlayer, embeddings1=None, embeddings2=None, train_embeddings1=True,
+    def __init__(self, num_topics, num_times, num_visits, vocab_size1, vocab_size2, eta_hidden_size, t_hidden_size,
+                 rho_size, emsize, theta_act, delta, nlayer, embeddings1=None, embeddings2=None, train_embeddings1=True,
                  train_embeddings2=True, enc_drop=0.5, add_freq=False, base_freq1=None, base_freq2=None):
         super(ETM, self).__init__()
 
@@ -28,12 +28,14 @@ class ETM(nn.Module):
         # self.beta = nn.Parameter(torch.randn(num_topics, vocab_size))
         self.theta_act = self.get_activation(theta_act)
         self.num_times = num_times
+        self.num_visits = num_visits
         self.delta = delta
         self.nlayer = nlayer
 
         self.train_embeddings1 = train_embeddings1
         self.train_embeddings2 = train_embeddings2
         self.add_freq = add_freq
+        self.eta_hidden_size = eta_hidden_size
 
         self.base_freq1 = base_freq1
         self.base_freq2 = base_freq2
@@ -60,10 +62,21 @@ class ETM(nn.Module):
         # )
         # self.mu_q_theta = nn.Linear(t_hidden_size, num_topics, bias=True)
         # self.logsigma_q_theta = nn.Linear(t_hidden_size, num_topics, bias=True)
-        self.q_theta_map = nn.Linear(self.vocab_size1+vocab_size2, self.t_hidden_size)
-        self.q_theta = nn.LSTM(self.t_hidden_size, self.t_hidden_size, self.nlayer, batch_first=True, dropout=enc_drop)
-        self.mu_q_theta = nn.Linear(self.t_hidden_size+self.num_topics, self.num_topics, bias=True)
-        self.logsigma_q_theta = nn.Linear(self.t_hidden_size+self.num_topics, self.num_topics, bias=True)
+        self.q_theta = nn.Sequential(
+                    nn.Linear(self.vocab_size1+self.vocab_size2+self.num_topics, self.t_hidden_size),
+                    self.theta_act,
+                    nn.Linear(self.t_hidden_size, self.t_hidden_size),
+                    self.theta_act,
+                )
+        self.mu_q_theta = nn.Linear(self.t_hidden_size, self.num_topics, bias=True)
+        self.logsigma_q_theta = nn.Linear(self.t_hidden_size, self.num_topics, bias=True)
+
+        ## define variational distribution for \eta via amortizartion... eta is K x T
+        self.q_eta_map = nn.Linear(self.vocab_size1+self.vocab_size2, self.eta_hidden_size)
+        self.q_eta = nn.LSTM(self.eta_hidden_size, self.eta_hidden_size, self.eta_nlayers, dropout=self.dropout)
+        self.mu_q_eta = nn.Linear(self.eta_hidden_size+self.num_topics, self.num_topics, bias=True)
+        self.logsigma_q_eta = nn.Linear(self.eta_hidden_size+self.num_topics, self.num_topics, bias=True)
+
 
     def get_activation(self, act):
         if act == 'tanh':
@@ -132,48 +145,61 @@ class ETM(nn.Module):
         kl_alpha = torch.stack(kl_alpha).sum()
         return alphas, kl_alpha
 
-    def get_theta(self, normalized_bows): ## structured amortized inference
-        batch_size = normalized_bows.size()[0]
-        inp = self.q_theta_map(normalized_bows)
-        hidden = self.init_hidden(batch_size)
-        output, _ = self.q_theta(inp, hidden)
+    def get_eta(self, rnn_inp, num_times): ## structured amortized inference
+        inp = self.q_eta_map(rnn_inp).unsqueeze(1)
+        hidden = self.init_hidden()
+        output, _ = self.q_eta(inp, hidden)
+        output = output.squeeze()
 
+        etas = torch.zeros(num_times, self.num_topics).to(device)
+        kl_eta = []
 
-        zs = torch.zeros(self.num_times, batch_size, self.num_topics).to(device)
-        kl_theta = []
+        inp_0 = torch.cat([output[0], torch.zeros(self.num_topics,).to(device)], dim=0)
+        mu_0 = self.mu_q_eta(inp_0)
+        logsigma_0 = self.logsigma_q_eta(inp_0)
+        etas[0] = self.reparameterize(mu_0, logsigma_0)
 
-        inp_0 = torch.cat([output[:, 0, :], torch.zeros(batch_size, self.num_topics).to(device)], dim=1)
-        mu_0 = self.mu_q_theta(inp_0)
-        logsigma_0 = self.logsigma_q_theta(inp_0)
-        zs[0] = self.reparameterize(mu_0, logsigma_0)
-
-        p_mu_0 = torch.zeros(batch_size, self.num_topics).to(device)
-        logsigma_p_0 = torch.zeros(batch_size, self.num_topics).to(device)
+        p_mu_0 = torch.zeros(self.num_topics,).to(device)
+        logsigma_p_0 = torch.zeros(self.num_topics,).to(device)
         kl_0 = self.get_kl(mu_0, logsigma_0, p_mu_0, logsigma_p_0)
-        kl_theta.append(kl_0)
-        for t in range(1, self.num_times):
-            inp_t = torch.cat([output[:, t, :], zs[t - 1]], dim=1)
-            mu_t = self.mu_q_theta(inp_t)
-            logsigma_t = self.logsigma_q_theta(inp_t)
-            zs[t] = self.reparameterize(mu_t, logsigma_t)
+        kl_eta.append(kl_0)
+        for t in range(1, num_times):
+            inp_t = torch.cat([output[t], etas[t-1]], dim=0)
+            mu_t = self.mu_q_eta(inp_t)
+            logsigma_t = self.logsigma_q_eta(inp_t)
+            etas[t] = self.reparameterize(mu_t, logsigma_t)
 
-            p_mu_t = zs[t - 1]
-            logsigma_p_t = torch.log(self.delta * torch.ones(batch_size, self.num_topics).to(device))
+            p_mu_t = etas[t-1]
+            logsigma_p_t = torch.log(self.delta * torch.ones(self.num_topics,).to(device))
             kl_t = self.get_kl(mu_t, logsigma_t, p_mu_t, logsigma_p_t)
+            kl_eta.append(kl_t)
+        kl_eta = torch.stack(kl_eta).sum()
+        return etas, kl_eta
 
-            kl_theta.append(kl_t)
-        kl_theta = torch.stack(kl_theta).sum()
-        thetas = F.softmax(zs, dim=-1)
-        return thetas, kl_theta
+    def get_theta(self, eta_age, eta_visit, bows, age, visits): ## amortized inference
+        """Returns the topic proportions.
+        """
+        eta_t = eta_age[age.type('torch.LongTensor')]
+        eta_v = eta_visit[visits.type('torch.LongTensor')]
+        eta_td = (eta_t + eta_v)/2
+        inp = torch.cat([bows, eta_td], dim=1)
+        q_theta = self.q_theta(inp)
+        if self.enc_drop > 0:
+            q_theta = self.t_drop(q_theta)
+        mu_theta = self.mu_q_theta(q_theta)
+        logsigma_theta = self.logsigma_q_theta(q_theta)
+        z = self.reparameterize(mu_theta, logsigma_theta)
+        theta = F.softmax(z, dim=-1)
+        kl_theta = self.get_kl(mu_theta, logsigma_theta, eta_td, torch.zeros(self.num_topics).to(device))
+        return theta, kl_theta
 
-    def init_hidden(self, bsize):
-        """Initializes the first hidden state of the RNN used as inference network for theta.
+    def init_hidden(self):
+        """Initializes the first hidden state of the RNN used as inference network for \eta.
         """
         weight = next(self.parameters())
-        nlayers = self.nlayer
-        nhid = self.t_hidden_size
-
-        return (weight.new_zeros(nlayers, bsize, nhid), weight.new_zeros(nlayers, bsize, nhid))
+        nlayers = self.eta_nlayers
+        nhid = self.eta_hidden_size
+        return (weight.new_zeros(nlayers, 1, nhid), weight.new_zeros(nlayers, 1, nhid))
 
     def calc_beta(self, alpha, rho, train_embeddings):
         """Returns the topic matrix \beta of shape  T x K x V
@@ -207,7 +233,8 @@ class ETM(nn.Module):
             beta_z_t = beta[t]*(z_t.mean(0)).T
             theta_z_t = theta[t]*z_t.mean(1)
             if self.add_freq:
-                res_t = torch.mm(theta_z_t, beta_z_t)-freq
+                res_t = torch.mm(theta_z_t, beta_z_t)/freq
+
             else:
                 res_t = torch.mm(theta_z_t, beta_z_t)
             preds_t = torch.log(res_t)
@@ -227,19 +254,19 @@ class ETM(nn.Module):
 
         return kld_z1, log_likelihood1, kld_z2, log_likelihood2
 
-    def forward(self, bows, normalized_bows, theta=None):
+    def forward(self, bows, normalized_bows, rnn_inp_age, rnn_inp_visit, age, visits):
         ## get \theta
-        if theta is None:
-            theta, kld_theta = self.get_theta(normalized_bows)
-        else:
-            kld_theta = None
+
         alpha, kld_alpha = self.get_alpha()
         ## get \beta
         beta1, beta2 = self.get_beta(alpha)
+        eta1, kld_eta1 = self.get_eta(rnn_inp_age, self.num_times)
+        eta2, kld_eta2 = self.get_eta(rnn_inp_visit, self.num_visits)
+        theta, kld_theta = self.get_theta(eta1, eta2, normalized_bows, age, visits)
+
 
         ## get prediction loss
         kld_z1, log_likelihood1, kld_z2, log_likelihood2 = self.decode(theta, beta1, beta2, bows)
         recon_loss = -log_likelihood1-log_likelihood2
 
-
-        return recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha
+        return recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha, kld_eta1, kld_eta2

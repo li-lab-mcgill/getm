@@ -68,3 +68,34 @@ class PatientDrugTestDataset(Dataset):
             sample = self.transform(sample)
 
         return sample, idx
+
+class MTDataset(Dataset):
+
+    def __init__(self, npy_file, age_file, visits_file, transform=None):
+        self.bow = np.load(npy_file)
+        self.transform = transform
+        self.age = np.load(age_file)
+        self.visits = np.load(visits_file)
+
+
+    def __len__(self):
+        return len(self.bow)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        data = self.bow[idx]
+        age_idx = self.age[idx]
+        visit_idx = self.visits[idx]
+
+
+
+
+        sample = {'Data': torch.from_numpy(data), "Age":torch.from_numpy(age_idx), "Visits": torch.from_numpy(visit_idx)}
+
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample, idx
