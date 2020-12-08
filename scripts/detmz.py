@@ -225,7 +225,7 @@ class ETM(nn.Module):
 
         for t in range(self.num_times):
             if len(theta[age == t]) > 0:
-                pi_t = torch.bmm(beta[t].unsqueeze(2), theta.T.unsqueeze(1)).T  # D*V*K
+                pi_t = torch.bmm(beta[t].unsqueeze(2), theta[age == t].T.unsqueeze(1)).T  # D*V*K
                 pi_t = F.softmax(pi_t, dim=-1)
                 z_t = F.gumbel_softmax(pi_t, dim=-1, hard=True)
                 kld_z_t = -torch.sum(torch.bmm(z_t, torch.log(theta[age == t]).unsqueeze(2)), dim=-1).mean() - \
