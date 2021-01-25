@@ -10,9 +10,9 @@ import math
 import pickle
 from torch.utils.data import DataLoader
 from torch import nn, optim
-from uketm import ETM
+from simulation import ETM
 from utils import nearest_neighbors, get_topic_coherence, get_topic_diversity
-from dataset import MixDataset
+from dataset import SimulationDataset
 
 parser = argparse.ArgumentParser(description='The Embedded Topic Model')
 
@@ -27,8 +27,8 @@ parser.add_argument('--save_path', type=str, default='results', help='path to sa
 parser.add_argument('--batch_size', type=int, default=100, help='input batch size for training')
 
 ### model-related arguments
-parser.add_argument('--vocab_size1', type=int, default=787, help='number of unique drugs')
-parser.add_argument('--vocab_size2', type=int, default=787, help='number of unique conditions')
+parser.add_argument('--vocab_size', type=int, default=400, help='number of unique drugs')
+
 parser.add_argument('--num_topics', type=int, default=50, help='number of topics')
 parser.add_argument('--rho_size', type=int, default=256, help='dimension of rho')
 parser.add_argument('--emb_size', type=int, default=256, help='dimension of embeddings')
@@ -43,12 +43,11 @@ parser.add_argument('--num_visits', type=int, default=3, help='number of visits 
 parser.add_argument('--upper', type=int, default=100, help='upper boundary for Gaussian variance')
 parser.add_argument('--lower', type=int, default=-100, help='lower boundary for Gaussian variance')
 
-parser.add_argument('--lambda11', type=float, default=0.01, help="weighted factor for drug_drug correlation")
-parser.add_argument('--lambda12', type=float, default=0.01, help="weighted factor for drug_cond correlation")
-parser.add_argument('--lambda22', type=float, default=0.01, help="weighted factor for cond_cond correlation")
 
-parser.add_argument('--train_embeddings1', type=int, default=1, help='whether to fix rho1 or train it')
-parser.add_argument('--train_embeddings2', type=int, default=1, help='whether to fix rho2 or train it')
+
+parser.add_argument('--train_rho', type=int, default=1, help='whether to fix rho or train it')
+parser.add_argument('--set_alpha', type=int, default=0, help='whether to fix alpha or train it')
+parser.add_argument('--set_eta', type=int, default=0, help='whether to fix eta and theta or train it')
 parser.add_argument('--add_freq', type=int, default=0, help='whether to consider baseline frequency or not')
 
 parser.add_argument('--embedding1', type=str, default="vertex_embeddings.npy", help='file contained fixed rho for type1')
@@ -95,24 +94,18 @@ if torch.cuda.is_available():
 
 
 
-embeddings1 = None
-if not args.train_embeddings1:
-    embed_file1 = os.path.join(args.data_path, args.embedding1)
-    embeddings1 = np.load(embed_file1)
-    embeddings1 = torch.from_numpy(embeddings1).to(device)
 
-embeddings2 = None
-if not args.train_embeddings2:
-    embed_file2 = os.path.join(args.data_path, args.embedding2)
-    embeddings2 = np.load(embed_file2)
-    embeddings2 = torch.from_numpy(embeddings2).to(device)
+embed_file = os.path.join(args.data_path, "rho_simulated.npy")
+rho_embeddings = np.load(embed_file)
+rho_embeddings = torch.from_numpy(rho_embeddings).float().to(device)
 
-adj_mat11 = np.load(os.path.join(args.data_path, "adj_mat11.npy"))
-adj_mat11 = torch.from_numpy(adj_mat11).float().to(device)
-adj_mat12 = np.load(os.path.join(args.data_path, "adj_mat12.npy"))
-adj_mat12 = torch.from_numpy(adj_mat12).float().to(device)
-adj_mat22 = np.load(os.path.join(args.data_path, "adj_mat22.npy"))
-adj_mat22 = torch.from_numpy(adj_mat22).float().to(device)
+alpha_embeddings = None
+if args.set_alpha:
+    embed_file = os.path.join(args.data_path, "alpha_simulated.npy")
+    alpha_embeddings = np.load(embed_file)
+    alpha_embeddings = torch.from_numpy(alpha_embeddings).float().to(device)
+
+
 
 
 ## define checkpoint
@@ -125,14 +118,13 @@ else:
     ckpt = os.path.join(args.save_path,
                         'etm_UKPD_K_{}_Htheta_{}_Optim_{}_Clip_{}_ThetaAct_{}_Lr_{}_Bsz_{}_RhoSize_{}_trainEmbeddings_{}'.format(
                             args.num_topics, args.t_hidden_size, args.optimizer, args.clip, args.theta_act,
-                            args.lr, args.batch_size, args.rho_size, args.train_embeddings1))
+                            args.lr, args.batch_size, args.rho_size, args.train_rho))
 
 ## define model and optimizer
-model = ETM(args.num_topics, args.num_times, args.vocab_size1, args.vocab_size2,
-            args.eta_hidden_size, args.t_hidden_size, args.rho_size, args.emb_size, args.theta_act,
-            args.delta, args.nlayer, adj_mat12, adj_mat11, adj_mat22, args.lambda12,
-            args.lambda11, args.lambda22, embeddings1, embeddings2, args.train_embeddings1,
-            args.train_embeddings2, args.enc_drop, args.eta_dropout, args.upper, args.lower).to(device)
+model = ETM(args.num_topics, args.num_times, args.vocab_size, args.eta_hidden_size,
+            args.t_hidden_size, args.rho_size, args.emb_size, args.theta_act,
+            args.delta, args.nlayer, args.set_alpha, alpha_embeddings, args.set_eta, args.train_rho,
+            rho_embeddings, args.enc_drop, args.eta_dropout, args.upper, args.lower).to(device)
 
 print('model: {}'.format(model))
 
@@ -153,17 +145,17 @@ else:
 
 def train(epoch):
     model.train()
-    acc_loss = 0
-    acc_kl_theta_loss = 0
-    acc_kl_alpha_loss = 0
-    acc_kl_eta1_loss = 0
-    acc_con_loss = 0
-
+    acc_real_loss = 0
     cnt = 0
 
     train_filename = os.path.join(args.data_path, "bow_train.npy")
     train_t_filename = os.path.join(args.data_path, "bow_t_train.npy")
-    TrainDataset = MixDataset(train_filename, train_t_filename)
+    theta_filename = os.path.join(args.data_path, "theta_train.npy")
+    eta_filename = os.path.join(args.data_path, "eta_train.npy")
+    if not args.set_eta:
+        TrainDataset = SimulationDataset(train_filename, train_t_filename)
+    else:
+        TrainDataset = SimulationDataset(train_filename, train_t_filename, theta_filename, eta_filename)
     TrainDataloader = DataLoader(TrainDataset, batch_size=args.batch_size,
                                  shuffle=True, num_workers=args.num_workers)
 
@@ -180,24 +172,25 @@ def train(epoch):
             normalized_data_batch = data_batch
         # recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha, kld_eta1 = \
         #     model(data_batch, normalized_data_batch,rnn_inp_age_train, rnn_inp_visits_train, age, visits)
-        recon_loss, kld_theta, kld_alpha, kld_eta1, con_loss = \
-            model(normalized_data_batch, data_batch_t)
-
+        if args.set_eta:
+            theta = sample_batch["Theta"].float().to(device)
+            theta = torch.transpose(theta, 0, 1)
+            eta = sample_batch["Eta"].float().to(device)
+            eta = torch.transpose(eta, 0, 1)
+            total_loss = model(normalized_data_batch, data_batch_t, theta, eta)
+        else:
+            total_loss = model(normalized_data_batch, data_batch_t)
 
         # total_loss = recon_loss + kld_theta + kld_z1 + kld_z2 + kld_alpha + kld_eta1
-        total_loss = recon_loss + kld_theta + kld_alpha + kld_eta1 + con_loss
+
         total_loss.backward()
 
         if args.clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         optimizer.step()
 
-        acc_loss += torch.sum(recon_loss).item()
-        acc_kl_theta_loss += torch.sum(kld_theta).item()
+        acc_real_loss += torch.sum(total_loss).item()
 
-        acc_kl_alpha_loss += torch.sum(kld_alpha).item()
-        acc_kl_eta1_loss += torch.sum(kld_eta1).item()
-        acc_con_loss += torch.sum(con_loss).item()
         # acc_kl_eta2_loss += torch.sum(kld_eta2).item()
 
         cnt += 1
@@ -205,12 +198,8 @@ def train(epoch):
 
 
         if idx % args.log_interval == 0 and idx > 0:
-            cur_loss = round(acc_loss / cnt, 2)
-            cur_kl_theta = round(acc_kl_theta_loss / cnt, 2)
+            cur_real_loss = round(acc_real_loss / cnt, 2)
 
-            cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2)
-            cur_kl_eta1 = round(acc_kl_eta1_loss / cnt, 2)
-            cur_con_loss = round (acc_con_loss / cnt, 2)
             # cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
 
             # cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1, 2)
@@ -218,18 +207,13 @@ def train(epoch):
             #           'Rec_loss: {} .. KL_alpha: {} .. KL_eta_age: {} .. NELBO: {}'.
             #         format(epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_kl_z1, cur_kl_z2, cur_loss,
             #                cur_kl_alpha, cur_kl_eta1, cur_real_loss))
-            cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_alpha + cur_kl_eta1 + cur_con_loss, 2)
-            print('Epoch: {} .. batch: {} .. LR: {} .. KL_theta: {} .. '
-                      'Rec_loss: {} .. KL_alpha: {} .. KL_eta_age: {} .. Con_loss: {} .. NELBO: {}'.
-                    format(epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss,
-                           cur_kl_alpha, cur_kl_eta1, cur_con_loss, cur_real_loss))
+
+            print('Epoch: {} .. batch: {} .. LR: {} .. NELBO: {}'.
+                    format(epoch, idx, optimizer.param_groups[0]['lr'], cur_real_loss))
 
 
-    cur_loss = round(acc_loss / cnt, 2)
-    cur_kl_theta = round(acc_kl_theta_loss / cnt, 2)
-    cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2)
-    cur_kl_eta1 = round(acc_kl_eta1_loss / cnt, 2)
-    cur_con_loss = round(acc_con_loss / cnt, 2)
+    cur_real_loss = round(acc_real_loss / cnt, 2)
+
     # cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
     #
     # cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1, 2)
@@ -240,12 +224,10 @@ def train(epoch):
     #                            cur_loss, cur_kl_alpha, cur_kl_eta1, cur_real_loss))
     # print('*' * 100)
 
-    cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_alpha + cur_kl_eta1 + cur_con_loss, 2)
+
     print('*' * 100)
-    print('Epoch----->{} .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. KL_alpha {} ..'
-          'KL_eta_age: {} .. Con_loss: {} .. NELBO: {}'.
-          format(epoch, optimizer.param_groups[0]['lr'], cur_kl_theta,
-                               cur_loss, cur_kl_alpha, cur_kl_eta1, cur_con_loss, cur_real_loss))
+    print('Epoch----->{} .. LR: {} ..  NELBO: {}'.
+          format(epoch, optimizer.param_groups[0]['lr'], cur_real_loss))
     print('*' * 100)
 
 
@@ -269,13 +251,20 @@ def evaluate(m, tc=False, td=False):
     with torch.no_grad():
         test_filename = os.path.join(args.data_path, "bow_test.npy")
         test_t_filename = os.path.join(args.data_path, "bow_t_test.npy")
+        theta_filename = os.path.join(args.data_path, "theta_test.npy")
+        eta_filename = os.path.join(args.data_path, "eta_test.npy")
 
-
-        TestDataset = MixDataset(test_filename, test_t_filename)
+        if not args.set_eta:
+            TestDataset = SimulationDataset(test_filename, test_t_filename)
+        else:
+            TestDataset = SimulationDataset(test_filename, test_t_filename, theta_filename, eta_filename)
         TestDataloader = DataLoader(TestDataset, batch_size=args.eval_batch_size,
                                     shuffle=True, num_workers=args.num_workers)
-        alpha, _ = m.get_alpha()
-        beta1, beta2 = m.get_beta(alpha)
+        if not args.set_alpha:
+            alpha, _ = m.get_alpha()
+        else:
+            alpha = m.get_alpha()
+        beta = m.get_beta(alpha)
 
         # eta2, _ = m.get_eta(rnn_inp_visits_test, args.num_visits)
         acc_loss = 0
@@ -285,19 +274,25 @@ def evaluate(m, tc=False, td=False):
             ## get theta from first half of docs
             data_batch = sample_batch["Data"].float().to(device)
             data_batch_t = sample_batch["Data_t"].float().to(device)
-            eta1, _ = m.get_eta(data_batch_t, args.num_times)
+            if not args.set_eta:
+                eta1, _ = m.get_eta(data_batch_t, args.num_times)
+
             sums = data_batch.sum(1).unsqueeze(1)
             if args.bow_norm:
                 normalized_data_batch = data_batch / sums
             else:
                 normalized_data_batch = data_batch
-            theta, _, _ = m.get_theta(eta1, normalized_data_batch)
+            if not args.set_eta:
+                theta, _, _ = m.get_theta(eta1, normalized_data_batch)
+            else:
+                theta = sample_batch['Theta'].float().to(device)
+                theta = torch.transpose(theta, 0, 1)
 
             # print("sums_2: {}".format(sums_2.squeeze()))
             # _, log_likelihood1, _, log_likelihood2 = m.decode(theta, beta1, beta2, data_batch, age)
             # recon_loss = -log_likelihood1 - log_likelihood2
-            nll1, nll2 = m.decode(theta, beta1, beta2, data_batch_t)
-            recon_loss = (nll1 + nll2) / 10
+            nll = m.decode(theta, beta, data_batch_t)
+            recon_loss = nll / 10
 
             loss = recon_loss
             # loss = loss.mean().item()
@@ -381,51 +376,56 @@ model.eval()
 
 
 
+if not args.set_alpha:
+    alpha, _ = model.get_alpha()
+    beta = model.get_beta(alpha)
+    beta = beta.detach().cpu().numpy()
+    saved_file = os.path.join(args.save_path, "beta.npy")
+    np.save(saved_file, beta)
+    alpha = alpha.detach().cpu().numpy()
+    saved_alpha = os.path.join(args.save_path, "alpha.npy")
+    np.save(saved_alpha, alpha)
 
-alpha, _ = model.get_alpha()
-beta1, beta2 = model.get_beta(alpha)
-beta1 = beta1.detach().cpu().numpy()
-beta2 = beta2.detach().cpu().numpy()
-saved_file1 = os.path.join(args.save_path, "beta1.npy")
-np.save(saved_file1, beta1)
-saved_file2 = os.path.join(args.save_path, "beta2.npy")
-np.save(saved_file2, beta2)
+else:
+    alpha = model.get_alpha()
+    beta = model.get_beta(alpha)
+
 #
 #
 #
-filename = os.path.join(args.data_path, "bow.npy")
-filename_t = os.path.join(args.data_path, "bow_t.npy")
+    filename = os.path.join(args.data_path, "bow.npy")
+    filename_t = os.path.join(args.data_path, "bow_t.npy")
 
 # filename = os.path.join("802_444_mix_data", "bow.npy")
 # filename_t = os.path.join("802_444_mix_data", "bow_t.npy")
 
-Dataset = MixDataset(filename, filename_t)
-MyDataloader = DataLoader(Dataset, batch_size=1000,
+    Dataset = SimulationDataset(filename, filename_t)
+    MyDataloader = DataLoader(Dataset, batch_size=1000,
                              shuffle=False, num_workers=args.num_workers)
 #
 # # eta2, _ = model.get_eta(rnn_inp_visits, args.num_visits)
 #
-index_list = []
-for idx, (sample_batch, index) in enumerate(MyDataloader):
-    index_list.append(index.cpu().numpy())
-    data_batch = sample_batch["Data"].float().to(device)
-    data_batch_t = sample_batch["Data_t"].float().to(device)
-    eta1, _ = model.get_eta(data_batch_t, args.num_times)
-    sums = data_batch.sum(1).unsqueeze(1)
-    if args.bow_norm:
-        normalized_data_batch = data_batch / sums
-    else:
-        normalized_data_batch = data_batch
-    _, _, theta= model.get_theta(eta1, normalized_data_batch)
-    theta = theta.detach().cpu().numpy()
-    saved_folder = os.path.join(args.save_path, "theta")
-    if not os.path.exists(saved_folder):
-        os.makedirs(saved_folder)
-    saved_theta = os.path.join(saved_folder, f"theta{idx}.npy")
-    np.save(saved_theta, theta)
-saved_index = os.path.join(saved_folder, "index.pkl")
-with open(saved_index, "wb") as f:
-    pickle.dump(index_list, f)
+    index_list = []
+    for idx, (sample_batch, index) in enumerate(MyDataloader):
+        index_list.append(index.cpu().numpy())
+        data_batch = sample_batch["Data"].float().to(device)
+        data_batch_t = sample_batch["Data_t"].float().to(device)
+        eta1, _ = model.get_eta(data_batch_t, args.num_times)
+        sums = data_batch.sum(1).unsqueeze(1)
+        if args.bow_norm:
+            normalized_data_batch = data_batch / sums
+        else:
+            normalized_data_batch = data_batch
+        theta, _, _ = model.get_theta(eta1, normalized_data_batch)
+        theta = theta.detach().cpu().numpy()
+        saved_folder = os.path.join(args.save_path, "theta")
+        if not os.path.exists(saved_folder):
+            os.makedirs(saved_folder)
+        saved_theta = os.path.join(saved_folder, f"theta{idx}.npy")
+        np.save(saved_theta, theta)
+        saved_index = os.path.join(saved_folder, "index.pkl")
+        with open(saved_index, "wb") as f:
+            pickle.dump(index_list, f)
 #
 #
 #
