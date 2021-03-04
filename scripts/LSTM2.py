@@ -15,7 +15,8 @@ parser.add_argument('--data_path_label', type=str, default='LSTM_data', help='di
 parser.add_argument('--save_path', type=str, default='results_LSTM', help='directory saving data')
 parser.add_argument('--X_name', type=str, default="theta", help="variable name of input")
 parser.add_argument('--Y_name', type=str, default="np", help="variable name of label")
-parser.add_argument('--alpha', type=float, default=0.5, help='Coefficient for loss mean')
+parser.add_argument('--alpha', type=float, default=100, help='Coefficient for loss mean')
+parser.add_argument('--beta', type=float, default=1, help='Coefficient for cross entropy')
 parser.add_argument('--nlayers', type=int, default=2, help='Number of hidden layers')
 parser.add_argument('--num_times', type=int, default=2, help='Number of time intervals')
 parser.add_argument('--num_classes', type=int, default=7, help='Number of classes')
@@ -59,20 +60,20 @@ if not os.path.exists(args.save_path):
 ckpt = os.path.join(args.save_path, "best_model")
 
 class LSTMClassifier(nn.Module):
-    def __init__(self, alpha, hidden_dim, input_dim, nlayers, num_times, num_classes, mean_loss=True, drop_out=0.0):
+    def __init__(self, alpha, hidden_dim, input_dim, nlayers, num_times, num_classes, beta, mean_loss=True, drop_out=0.0):
         super(LSTMClassifier, self).__init__()
         self.num_classes = num_classes
         self.nlayers = nlayers
         self.hidden_dim = hidden_dim
 
         self.alpha = alpha
+        self.beta = beta
         self.num_times = num_times
         self.mean_loss = mean_loss
 
         self.lstm = nn.LSTM(input_dim, hidden_dim, nlayers, batch_first=True, dropout=drop_out)
         self.linear = nn.Linear(hidden_dim, self.num_classes, bias=True)
-        # self.output = nn.Sigmoid()
-        self.output = nn.Softmax(dim=-1)
+        self.output = nn.Sigmoid()
 
 
     def init_hidden(self, bsize):
@@ -84,21 +85,33 @@ class LSTMClassifier(nn.Module):
 
         return (weight.new_zeros(nlayers, bsize, nhid), weight.new_zeros(nlayers, bsize, nhid))
 
+    def binary_cross_entropy(self, y_true, y_pred, alpha, beta):
+        loss = -alpha*y_true*torch.log(y_pred)-beta*(1-y_true)*torch.log(1-y_pred)
+        return torch.sum(loss)
+
     def calc_mean_loss(self, y, output, mask):
-        loss = nn.CrossEntropyLoss()
+        # weights = [9]
+        # class_weights = torch.FloatTensor(weights).to(device)
+        # loss = nn.BCELoss(weight=class_weights)
         y_true = y[mask]
         y_pred = output[mask]
-        return 10*loss(y_pred, y_true)
+        # return 10*loss(y_pred, y_true)
+        return self.binary_cross_entropy(y_true, y_pred, self.alpha, self.beta)
 
     def calc_last_loss(self, y, output):
         loss = nn.BCELoss()
         l = loss(output[-1], y[-1])
         return 10*l
 
+    def get_lstm_output(self, x, bsize):
+        hidden = self.init_hidden(bsize)
+        x, _ = self.lstm(x, hidden)
+
+
     def forward(self, x, y, batch_size):
         hidden = self.init_hidden(batch_size)
         x, _ = self.lstm(x, hidden)
-        x = self.linear(x)
+        x = self.linear(x[:, :-1, :])
         output = self.output(x)
 
         return output
@@ -195,7 +208,7 @@ def validate(model):
 
 def main():
     model = LSTMClassifier(args.alpha, args.hidden_dim, args.input_dim, args.nlayers, args.num_times, args.num_classes,
-                           args.mean_loss, args.dropout).to(device)
+                           args.beta, args.mean_loss, args.dropout).to(device)
     print('model: {}'.format(model))
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wdecay)
 

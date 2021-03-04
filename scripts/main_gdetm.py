@@ -1,19 +1,18 @@
-#/usr/bin/python
+# /usr/bin/python
 
 from __future__ import print_function
 
 import argparse
 import torch
 import numpy as np
-import os 
+import os
 import math
+import pickle
 from torch.utils.data import DataLoader
 from torch import nn, optim
-from etm import ETM
+from gdetm import ETM
 from utils import nearest_neighbors, get_topic_coherence, get_topic_diversity
-from dataset import PatientDrugDataset, PatientDrugTestDataset
-import pickle
-
+from dataset import PatientDrugDataset
 
 parser = argparse.ArgumentParser(description='The Embedded Topic Model')
 
@@ -21,25 +20,41 @@ parser.add_argument('--data_path', type=str, default='input_data', help='directo
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers to load data')
 parser.add_argument('--emb_path', type=str, default='input_data', help='directory containing embeddings')
 
-
 # parser.add_argument('--save_path', type=str, default='./results', help='path to save results')
 
 parser.add_argument('--save_path', type=str, default='results', help='path to save results')
 
-parser.add_argument('--batch_size', type=int, default=1000, help='input batch size for training')
+parser.add_argument('--batch_size', type=int, default=100, help='input batch size for training')
 
 ### model-related arguments
 parser.add_argument('--vocab_size', type=int, default=787, help='number of unique drugs')
+
 parser.add_argument('--num_topics', type=int, default=50, help='number of topics')
 parser.add_argument('--rho_size', type=int, default=256, help='dimension of rho')
 parser.add_argument('--emb_size', type=int, default=256, help='dimension of embeddings')
 parser.add_argument('--t_hidden_size', type=int, default=128, help='dimension of hidden space of q(theta)')
-parser.add_argument('--theta_act', type=str, default='relu', help='tanh, softplus, relu, rrelu, leakyrelu, elu, selu, glu)')
+parser.add_argument('--eta_hidden_size', type=int, default=128, help='dimension of hidden space of q(eta)')
+parser.add_argument('--theta_act', type=str, default='relu',
+                    help='tanh, softplus, relu, rrelu, leakyrelu, elu, selu, glu)')
+parser.add_argument('--delta', type=float, default=0.005, help='prior variance')
+parser.add_argument('--nlayer', type=int, default=3, help='number of layers for theta')
+parser.add_argument('--num_times', type=int, default=3, help='number of age periods for eta')
+parser.add_argument('--num_visits', type=int, default=3, help='number of visits for eta')
+parser.add_argument('--upper', type=int, default=100, help='upper boundary for Gaussian variance')
+parser.add_argument('--lower', type=int, default=-100, help='lower boundary for Gaussian variance')
 
-parser.add_argument('--train_embeddings', type=int, default=1, help='whether to fix rho or train it')
+parser.add_argument('--lambda_adj', type=float, default=0.01, help="weighted factor for drug_drug correlation")
+
+
+parser.add_argument('--train_embeddings', type=int, default=1, help='whether to fix rho1 or train it')
+
+parser.add_argument('--add_freq', type=int, default=0, help='whether to consider baseline frequency or not')
+
 parser.add_argument('--embedding', type=str, default="vertex_embeddings.npy", help='file contained prettrained rho')
+
 ### optimization-related arguments
 parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
+parser.add_argument('--reconef', type=float, default=1, help='coefficient for reconstruction loss')
 parser.add_argument('--lr_factor', type=float, default=4.0, help='divide learning rate by this...')
 
 parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train...150 for 20ng 100 for others')
@@ -48,29 +63,29 @@ parser.add_argument('--mode', type=str, default='train', help='train or eval mod
 parser.add_argument('--optimizer', type=str, default='adam', help='choice of optimizer')
 parser.add_argument('--seed', type=int, default=2020, help='random seed (default: 1)')
 
-
-parser.add_argument('--enc_drop', type=float, default=0.1, help='dropout rate on encoder')
+parser.add_argument('--enc_drop', type=float, default=0.0, help='dropout rate on encoder')
+parser.add_argument('--eta_dropout', type=float, default=0.0, help='dropout rate on rnn for eta')
 parser.add_argument('--clip', type=float, default=2.0, help='gradient clipping')
 
-parser.add_argument('--nonmono', type=int, default=10, help='number of bad hits allowed')
+parser.add_argument('--nonmono', type=int, default=5, help='number of bad hits allowed')
 parser.add_argument('--wdecay', type=float, default=1.2e-6, help='some l2 regularization')
 
 parser.add_argument('--anneal_lr', type=int, default=1, help='whether to anneal the learning rate or not')
 parser.add_argument('--bow_norm', type=int, default=1, help='normalize the bows or not')
-
+parser.add_argument('--gpu_device', type=str, default="cuda", help='gpu device name')
 ### evaluation, visualization, and logging-related arguments
 parser.add_argument('--num_words', type=int, default=20, help='number of words for topic viz')
 parser.add_argument('--log_interval', type=int, default=1, help='when to log training')
 
 parser.add_argument('--visualize_every', type=int, default=1, help='when to visualize results')
-parser.add_argument('--eval_batch_size', type=int, default=1000, help='input batch size for evaluation')
+parser.add_argument('--eval_batch_size', type=int, default=100, help='input batch size for evaluation')
 parser.add_argument('--load_from', type=str, default='', help='the name of the ckpt to eval from')
 parser.add_argument('--tc', type=int, default=0, help='whether to compute topic coherence or not')
 parser.add_argument('--td', type=int, default=0, help='whether to compute topic diversity or not')
 
 args = parser.parse_args()
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device(args.gpu_device if torch.cuda.is_available() else "cpu")
 
 print('\n')
 np.random.seed(args.seed)
@@ -88,6 +103,11 @@ if not args.train_embeddings:
 
 
 
+rnn_inp = np.load(os.path.join(args.data_path, "rnn_inp.npy"))
+rnn_inp = torch.from_numpy(rnn_inp).float().to(device)
+
+
+
 ## define checkpoint
 if not os.path.exists(args.save_path):
     os.makedirs(args.save_path)
@@ -95,14 +115,16 @@ if not os.path.exists(args.save_path):
 if args.mode == 'eval':
     ckpt = args.load_from
 else:
-    ckpt = os.path.join(args.save_path, 
-        'etm_UKPD_K_{}_Htheta_{} Optim_{}_Clip_{}_ThetaAct_{}_Lr_{}_Bsz_{}_RhoSize_{}_trainEmbeddings_{}'.format(
-        args.num_topics, args.t_hidden_size, args.optimizer, args.clip, args.theta_act,
-            args.lr, args.batch_size, args.rho_size, args.train_embeddings))
+    ckpt = os.path.join(args.save_path,
+                        'etm_UKPD_K_{}_Htheta_{}_Optim_{}_Clip_{}_ThetaAct_{}_Lr_{}_Bsz_{}_RhoSize_{}_trainEmbeddings_{}'.format(
+                            args.num_topics, args.t_hidden_size, args.optimizer, args.clip, args.theta_act,
+                            args.lr, args.batch_size, args.rho_size, args.train_embeddings))
 
 ## define model and optimizer
-model = ETM(args.num_topics, args.vocab_size, args.t_hidden_size, args.rho_size, args.emb_size,
-                args.theta_act, embeddings, args.train_embeddings, args.enc_drop).to(device)
+model = ETM(args.num_topics, args.num_times, args.vocab_size,
+            args.eta_hidden_size, args.t_hidden_size, args.rho_size, args.emb_size, args.theta_act,
+            args.delta, args.nlayer, embeddings, args.train_embeddings, args.reconef,
+            args.enc_drop, args.eta_dropout, args.upper, args.lower).to(device)
 
 print('model: {}'.format(model))
 
@@ -120,11 +142,17 @@ else:
     print('Defaulting to vanilla SGD')
     optimizer = optim.SGD(model.parameters(), lr=args.lr)
 
+
 def train(epoch):
     model.train()
     acc_loss = 0
     acc_kl_theta_loss = 0
+    acc_kl_alpha_loss = 0
+    acc_kl_eta1_loss = 0
+
+
     cnt = 0
+
     train_t_filename = os.path.join(args.data_path, "bow_t_train.npy")
     TrainDataset = PatientDrugDataset(train_t_filename)
     TrainDataloader = DataLoader(TrainDataset, batch_size=args.batch_size,
@@ -141,10 +169,14 @@ def train(epoch):
             normalized_data_batch = data_batch / sums
         else:
             normalized_data_batch = data_batch
-        recon_loss, kld_theta = model(data_batch, normalized_data_batch)
+        # recon_loss, kld_theta, kld_z1, kld_z2, kld_alpha, kld_eta1 = \
+        #     model(data_batch, normalized_data_batch,rnn_inp_age_train, rnn_inp_visits_train, age, visits)
+        recon_loss, kld_theta, kld_alpha, kld_eta1, = \
+            model(normalized_data_batch, data_batch_t, rnn_inp)
 
-        # NELBO = -(loglikelihood - KL[q||p]) = -loglikelihood + KL[q||p]
-        total_loss = recon_loss + kld_theta
+
+        # total_loss = recon_loss + kld_theta + kld_z1 + kld_z2 + kld_alpha + kld_eta1
+        total_loss = recon_loss + kld_theta + kld_alpha + kld_eta1
         total_loss.backward()
 
         if args.clip > 0:
@@ -153,75 +185,90 @@ def train(epoch):
 
         acc_loss += torch.sum(recon_loss).item()
         acc_kl_theta_loss += torch.sum(kld_theta).item()
+
+        acc_kl_alpha_loss += torch.sum(kld_alpha).item()
+        acc_kl_eta1_loss += torch.sum(kld_eta1).item()
+
+        # acc_kl_eta2_loss += torch.sum(kld_eta2).item()
+
         cnt += 1
 
+
+
         if idx % args.log_interval == 0 and idx > 0:
-            cur_loss = round(acc_loss / cnt, 2) 
-            cur_kl_theta = round(acc_kl_theta_loss / cnt, 2) 
-            cur_real_loss = round(cur_loss + cur_kl_theta, 2)
+            cur_loss = round(acc_loss / cnt, 2)
+            cur_kl_theta = round(acc_kl_theta_loss / cnt, 2)
 
-            print('Epoch: {} .. batch: {}/320 .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. NELBO: {}'.format(
-                epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss, cur_real_loss))
-    
-    cur_loss = round(acc_loss / cnt, 2) 
-    cur_kl_theta = round(acc_kl_theta_loss / cnt, 2) 
-    cur_real_loss = round(cur_loss + cur_kl_theta, 2)
-    print('*'*100)
-    print('Epoch----->{} .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. NELBO: {}'.format(
-            epoch, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss, cur_real_loss))
-    print('*'*100)
+            cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2)
+            cur_kl_eta1 = round(acc_kl_eta1_loss / cnt, 2)
+
+            # cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
+
+            # cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1, 2)
+            # print('Epoch: {} .. batch: {} .. LR: {} .. KL_theta: {} .. KL_z1: {} .. KL_z2: {} .. '
+            #           'Rec_loss: {} .. KL_alpha: {} .. KL_eta_age: {} .. NELBO: {}'.
+            #         format(epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_kl_z1, cur_kl_z2, cur_loss,
+            #                cur_kl_alpha, cur_kl_eta1, cur_real_loss))
+            cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_alpha + cur_kl_eta1, 2)
+            print('Epoch: {} .. batch: {} .. LR: {} .. KL_theta: {} .. '
+                      'Rec_loss: {} .. KL_alpha: {} .. KL_eta_age: {} .. NELBO: {}'.
+                    format(epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss,
+                           cur_kl_alpha, cur_kl_eta1, cur_real_loss))
 
 
-# def visualize(m, show_emb=True):
-#     if not os.path.exists('./results'):
-#         os.makedirs('./results')
-#
-#     m.eval()
-#
-#     if args.dataset == "20ng":
-#         queries = ['andrew', 'computer', 'sports', 'religion', 'man', 'love',
-#                     'intelligence', 'money', 'politics', 'health', 'people', 'family']
-#     else:
-#         queries = ['border', 'vaccines', 'coronaviruses', 'masks']
-#
-#     ## visualize topics using monte carlo
-#     with torch.no_grad():
-#         print('#'*100)
-#         print('Visualize topics...')
-#         topics_words = []
-#         gammas = m.get_beta()
-#         for k in range(args.num_topics):
-#             gamma = gammas[k]
-#             top_words = list(gamma.cpu().numpy().argsort()[-args.num_words+1:][::-1])
-#             topic_words = [vocab[a] for a in top_words]
-#             topics_words.append(' '.join(topic_words))
-#             print('Topic {}: {}'.format(k, topic_words))
-#
-#         if show_emb:
-#             ## visualize word embeddings by using V to get nearest neighbors
-#             print('#'*100)
-#             print('Visualize word embeddings by using output embedding matrix')
-#             try:
-#                 embeddings = m.rho.weight  # Vocab_size x E
-#             except:
-#                 embeddings = m.rho         # Vocab_size x E
-#             neighbors = []
-#             for word in queries:
-#                 print('word: {} .. neighbors: {}'.format(
-#                     word, nearest_neighbors(word, embeddings, vocab)))
-#             print('#'*100)
+    cur_loss = round(acc_loss / cnt, 2)
+    cur_kl_theta = round(acc_kl_theta_loss / cnt, 2)
+    cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2)
+    cur_kl_eta1 = round(acc_kl_eta1_loss / cnt, 2)
+
+    # cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
+    #
+    # cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1, 2)
+    # print('*' * 100)
+    # print('Epoch----->{} .. LR: {} .. KL_theta: {} .. KL_z1: {} .. KL_z2: {} .. Rec_loss: {} .. KL_alpha {} ..'
+    #       'KL_eta_age: {} .. NELBO: {}'.
+    #       format(epoch, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_kl_z1, cur_kl_z2,
+    #                            cur_loss, cur_kl_alpha, cur_kl_eta1, cur_real_loss))
+    # print('*' * 100)
+
+    cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_alpha + cur_kl_eta1, 2)
+    print('*' * 100)
+    print('Epoch----->{} .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. KL_alpha {} ..'
+          'KL_eta_age: {} .. NELBO: {}'.
+          format(epoch, optimizer.param_groups[0]['lr'], cur_kl_theta,
+                               cur_loss, cur_kl_alpha, cur_kl_eta1, cur_real_loss))
+    print('*' * 100)
+
+
+
+
+def get_rnn_input(data_batch, times, num_times, vocab_size):
+
+    rnn_input = torch.zeros(num_times, vocab_size).to(device)
+
+
+    for t in range(num_times):
+        rnn_input[t] = (data_batch[times == t].sum(0))/len(times[times == t])
+
+
+    return rnn_input
 
 def evaluate(m, tc=False, td=False):
     """Compute perplexity on document completion.
     """
     m.eval()
     with torch.no_grad():
+
         test_t_filename = os.path.join(args.data_path, "bow_t_test.npy")
+
 
         TestDataset = PatientDrugDataset(test_t_filename)
         TestDataloader = DataLoader(TestDataset, batch_size=args.eval_batch_size,
                                     shuffle=True, num_workers=args.num_workers)
-        beta = m.get_beta()
+        alpha, _ = m.get_alpha()
+        beta = m.get_beta(alpha)
+
+        # eta2, _ = m.get_eta(rnn_inp_visits_test, args.num_visits)
         acc_loss = 0
         cnt = 0
         for idx, (sample_batch, index) in enumerate(TestDataloader):
@@ -230,32 +277,35 @@ def evaluate(m, tc=False, td=False):
             data_batch_t = sample_batch['Data'].float().to(device)
             data_batch = torch.transpose(data_batch_t, 0, 1).reshape(data_batch_t.size(0) * data_batch_t.size(1),
                                                                      data_batch_t.size(2))
+            eta1, _ = m.get_eta(rnn_inp)
             sums = data_batch.sum(1).unsqueeze(1)
             if args.bow_norm:
                 normalized_data_batch = data_batch / sums
             else:
                 normalized_data_batch = data_batch
-            theta, _ = m.get_theta(normalized_data_batch)
+            theta, _, = m.get_theta(eta1, normalized_data_batch, data_batch_t)
 
-            res = torch.mm(theta, beta)
-            preds = torch.log(res)
-            recon_loss = -(preds * data_batch).sum(1)
-            
+            # print("sums_2: {}".format(sums_2.squeeze()))
+            # _, log_likelihood1, _, log_likelihood2 = m.decode(theta, beta1, beta2, data_batch, age)
+            # recon_loss = -log_likelihood1 - log_likelihood2
+            nll = m.decode(theta, beta, data_batch_t)
+            recon_loss = nll / args.reconef
 
-            loss = recon_loss.mean().item()
+            loss = recon_loss
+            # loss = loss.mean().item()
             acc_loss += loss
             cnt += 1
         cur_loss = acc_loss / cnt
-        ppl_dc = round(math.exp(cur_loss), 1)
-        print('*'*100)
-        print('Test Doc Completion PPL: {}'.format(ppl_dc))
-        print('*'*100)
+        # ppl_dc = round(math.exp(cur_loss), 1)
+        print('*' * 100)
+        print('Test Negative Log Likelihood: {}'.format(cur_loss))
+        print('*' * 100)
 
         TQ = TC = TD = 0
-        
-        if tc or td:
-            beta = beta.data.cpu().numpy()
 
+        if tc or td:
+            beta1 = beta1.data.cpu().numpy()
+            beta2 = beta2.data.cpu().numpy()
         if tc:
             print('Computing topic coherence...')
             TC_all, cnt_all = get_topic_coherence(beta, train_tokens, vocab)
@@ -263,7 +313,7 @@ def evaluate(m, tc=False, td=False):
             TC_all = torch.tensor(TC_all)
             cnt_all = torch.tensor(cnt_all)
             TC_all = TC_all / cnt_all
-            TC_all[TC_all<0] = 0
+            TC_all[TC_all < 0] = 0
 
             TC = TC_all.mean().item()
             print('Topic Coherence is: ', TC)
@@ -271,19 +321,20 @@ def evaluate(m, tc=False, td=False):
 
         if td:
             print('Computing topic diversity...')
-            TD_all = get_topic_diversity(beta, 25)        
+            TD_all = get_topic_diversity(beta, 25)
             TD = np.mean(TD_all)
             print('Topic Diversity is: {}'.format(TD))
-                    
+
             print('Get topic quality...')
             TQ = TD * TC
             print('Topic Quality is: {}'.format(TQ))
-            print('#'*100)
+            print('#' * 100)
 
-        return ppl_dc, TQ, TC, TD
+        return cur_loss, TQ, TC, TD
+
 
 if args.mode == 'train':
-    ## train model on data 
+    ## train model on data
     best_epoch = 0
     best_val_ppl = 1e9
     all_val_ppls = []
@@ -295,7 +346,7 @@ if args.mode == 'train':
     for epoch in range(1, args.epochs):
         train(epoch)
         val_ppl, tq, tc, td = evaluate(model)
-        if val_ppl < best_val_ppl:
+        if val_ppl < best_val_ppl or not os.path.exists(ckpt):
             with open(ckpt, 'wb') as f:
                 torch.save(model, f)
             best_epoch = epoch
@@ -303,7 +354,8 @@ if args.mode == 'train':
         else:
             ## check whether to anneal lr
             lr = optimizer.param_groups[0]['lr']
-            if args.anneal_lr and (len(all_val_ppls) > args.nonmono and val_ppl > min(all_val_ppls[:-args.nonmono]) and lr > 1e-5):
+            if args.anneal_lr and (
+                    len(all_val_ppls) > args.nonmono and val_ppl > min(all_val_ppls[:-args.nonmono]) and lr > 1e-5):
                 optimizer.param_groups[0]['lr'] /= args.lr_factor
         # if epoch % args.visualize_every == 0:
         #     visualize(model)
@@ -312,64 +364,36 @@ if args.mode == 'train':
         model = torch.load(f)
     model = model.to(device)
     val_ppl = evaluate(model)
-else:   
+else:
     with open(ckpt, 'rb') as f:
         model = torch.load(f)
     model = model.to(device)
-    
+
 model.eval()
 
-# saved_nelbo = os.path.join(args.save_path,"nelbo.npy")
-# np.save(saved_nelbo, np.array(loss_epochs))
-## get document completion perplexities and topic quality
-# test_ppl, tq, tc, td = evaluate(model, 'test', tc=True, td=True)
+
+
+
+alpha, _ = model.get_alpha()
+beta = model.get_beta(alpha)
+beta = beta.detach().cpu().numpy()
+
+saved_file1 = os.path.join(args.save_path, "beta.npy")
+np.save(saved_file1, beta)
+
 #
-# f=open(ckpt+'_tq.txt','w')
-# s1="Topic Quality: "+str(tq)
-# s2="Topic Coherence: "+str(tc)
-# s3="Topic Diversity: "+str(td)
-# f.write(s1+'\n'+s2+'\n'+s3+'\n')
-# f.close()
 #
-# f=open(ckpt+'_tq.txt','r')
-# [print(i,end='') for i in f.readlines()]
-# f.close()
+#
+rho = model.rho.weight.detach().cpu().numpy()
 
-## get most used topics
-# indices = torch.tensor(range(args.num_docs_train))
-# indices = torch.split(indices, args.batch_size)
-# thetaAvg = torch.zeros(1, args.num_topics).to(device)
-# thetaWeightedAvg = torch.zeros(1, args.num_topics).to(device)
-# cnt = 0
-# for idx, ind in enumerate(indices):
-#     data_batch = data.get_batch(train_tokens, train_counts, ind, args.vocab_size, device)
-#     sums = data_batch.sum(1).unsqueeze(1)
-#     cnt += sums.sum(0).squeeze().cpu().numpy()
-#     if args.bow_norm:
-#         normalized_data_batch = data_batch / sums
-#     else:
-#         normalized_data_batch = data_batch
-#     theta, _ = model.get_theta(normalized_data_batch)
-#     thetaAvg += theta.sum(0).unsqueeze(0) / args.num_docs_train
-#     weighed_theta = sums * theta
-#     thetaWeightedAvg += weighed_theta.sum(0).unsqueeze(0)
-#     if idx % 100 == 0 and idx > 0:
-#         print('batch: {}/{}'.format(idx, len(indices)))
-# thetaWeightedAvg = thetaWeightedAvg.squeeze().detach().cpu().numpy() / cnt
-# print('\nThe 10 most used topics are {}'.format(thetaWeightedAvg.argsort()[::-1][:10]))
+saved_rho = os.path.join(args.save_path, "rho.npy")
 
-## show topics
-beta = model.get_beta().detach().cpu().numpy()
-saved_file = os.path.join(args.save_path,"beta.npy")
-np.save(saved_file, beta)
-# topic_indices = list(np.random.choice(args.num_topics, 10)) # 10 random topics
-# print('\n')
-# for k in range(args.num_topics):#topic_indices:
-#     gamma = beta[k]
-#     top_words = list(gamma.detach().cpu().numpy().argsort()[-args.num_words+1:][::-1])
-#     topic_words = [vocab[a] for a in top_words]
-#     print('Topic {}: {}'.format(k, topic_words))
+saved_alpha= os.path.join(args.save_path, "alpha.npy")
+np.save(saved_rho, rho)
+np.save(saved_alpha, alpha.detach().cpu().numpy())
 
+
+#####
 
 filename_t = os.path.join(args.data_path, "bow_t_train.npy")
 
@@ -388,8 +412,13 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     data_batch_t = sample_batch['Data'].float().to(device)
     data_batch = torch.transpose(data_batch_t, 0, 1).reshape(data_batch_t.size(0) * data_batch_t.size(1),
                                                              data_batch_t.size(2))
-    theta, _ = model.get_theta(data_batch)
-
+    eta1, _ = model.get_eta(rnn_inp)
+    sums = data_batch.sum(1).unsqueeze(1)
+    if args.bow_norm:
+        normalized_data_batch = data_batch / sums
+    else:
+        normalized_data_batch = data_batch
+    theta, _ = model.get_theta(eta1, normalized_data_batch, data_batch_t)
     theta = theta.detach().cpu().numpy()
 
     saved_folder = os.path.join(args.save_path, "theta_train")
@@ -407,10 +436,12 @@ with open(saved_index, "wb") as f:
 
 
 
+
+
 filename_t = os.path.join(args.data_path, "bow_t_test.npy")
 Dataset = PatientDrugDataset(filename_t)
 MyDataloader = DataLoader(Dataset, batch_size=1000,
-                          shuffle=False, num_workers=args.num_workers)
+                             shuffle=False, num_workers=args.num_workers)
 #
 # # eta2, _ = model.get_eta(rnn_inp_visits, args.num_visits)
 #
@@ -420,8 +451,13 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     data_batch_t = sample_batch['Data'].float().to(device)
     data_batch = torch.transpose(data_batch_t, 0, 1).reshape(data_batch_t.size(0) * data_batch_t.size(1),
                                                              data_batch_t.size(2))
-    theta, _ = model.get_theta(data_batch)
-
+    eta1, _ = model.get_eta(rnn_inp)
+    sums = data_batch.sum(1).unsqueeze(1)
+    if args.bow_norm:
+        normalized_data_batch = data_batch / sums
+    else:
+        normalized_data_batch = data_batch
+    theta, _ = model.get_theta(eta1, normalized_data_batch, data_batch_t)
     theta = theta.detach().cpu().numpy()
 
     saved_folder = os.path.join(args.save_path, "theta_test")
@@ -434,4 +470,6 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
 saved_index = os.path.join(saved_folder, "index.pkl")
 with open(saved_index, "wb") as f:
     pickle.dump(index_list, f)
-
+#
+#
+#
