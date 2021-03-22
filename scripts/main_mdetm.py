@@ -5,30 +5,42 @@ from __future__ import print_function
 import argparse
 import torch
 import numpy as np
-import os
+import os, time
 import math
 import pickle
 from torch.utils.data import DataLoader
 from torch import nn, optim
-from mdetm import ETM
+from mdetm import MDETM
 from utils import nearest_neighbors, get_topic_coherence, get_topic_diversity
 from dataset import MixDataset
 
+from IPython import embed 
+
 parser = argparse.ArgumentParser(description='The Embedded Topic Model')
 
-parser.add_argument('--data_path', type=str, default='input_data', help='directory containing data')
+parser.add_argument('--data_path', type=str, default='data/', help='directory containing data')
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers to load data')
-parser.add_argument('--emb_path', type=str, default='input_data', help='directory containing embeddings')
+parser.add_argument('--emb_path', type=str, default='embed/', help='directory containing embeddings')
 
 # parser.add_argument('--save_path', type=str, default='./results', help='path to save results')
 
-parser.add_argument('--save_path', type=str, default='results', help='path to save results')
+parser.add_argument('--save_path', type=str, default='results/', help='path to save results')
 
 parser.add_argument('--batch_size', type=int, default=100, help='input batch size for training')
 
 ### model-related arguments
-parser.add_argument('--vocab_size1', type=int, default=787, help='number of unique drugs')
-parser.add_argument('--vocab_size2', type=int, default=787, help='number of unique conditions')
+# FIXME: load them from meta-data file
+# parser.add_argument('--code_types', type=list, default=['icd','act_code','drug_ingredient'], help='multi code types of input data')
+# parser.add_argument('--vocab_size', type=list, default=[], help='number of unique drugs')
+# parser.add_argument('--train_embeddings', type=list, default=[1,1,1], help='whether to fix rho1 or train it')
+# parser.add_argument('--embedding', type=list, default=["vertex_embeddings.npy"]*2, help='file contained fixed rho for type1')
+# parser.add_argument('--lambda11', type=float, default=0.01, help="weighted factor for drug_drug correlation")
+# parser.add_argument('--lambda12', type=float, default=0.01, help="weighted factor for drug_cond correlation")
+# parser.add_argument('--lambda22', type=float, default=0.01, help="weighted factor for cond_cond correlation")
+
+
+parser.add_argument('--add_freq', type=int, default=0, help='whether to consider baseline frequency or not')
+
 parser.add_argument('--num_topics', type=int, default=50, help='number of topics')
 parser.add_argument('--rho_size', type=int, default=256, help='dimension of rho')
 parser.add_argument('--emb_size', type=int, default=256, help='dimension of embeddings')
@@ -40,19 +52,9 @@ parser.add_argument('--delta', type=float, default=0.005, help='prior variance')
 parser.add_argument('--nlayer', type=int, default=3, help='number of layers for theta')
 parser.add_argument('--num_times', type=int, default=3, help='number of age periods for eta')
 parser.add_argument('--num_visits', type=int, default=3, help='number of visits for eta')
-parser.add_argument('--upper', type=int, default=100, help='upper boundary for Gaussian variance')
-parser.add_argument('--lower', type=int, default=-100, help='lower boundary for Gaussian variance')
+parser.add_argument('--upper', type=int, default=10, help='upper boundary for Gaussian variance')
+parser.add_argument('--lower', type=int, default=-10, help='lower boundary for Gaussian variance')
 
-parser.add_argument('--lambda11', type=float, default=0.01, help="weighted factor for drug_drug correlation")
-parser.add_argument('--lambda12', type=float, default=0.01, help="weighted factor for drug_cond correlation")
-parser.add_argument('--lambda22', type=float, default=0.01, help="weighted factor for cond_cond correlation")
-
-parser.add_argument('--train_embeddings1', type=int, default=1, help='whether to fix rho1 or train it')
-parser.add_argument('--train_embeddings2', type=int, default=1, help='whether to fix rho2 or train it')
-parser.add_argument('--add_freq', type=int, default=0, help='whether to consider baseline frequency or not')
-
-parser.add_argument('--embedding1', type=str, default="vertex_embeddings.npy", help='file contained fixed rho for type1')
-parser.add_argument('--embedding2', type=str, default="vertex_embeddings.npy", help='file contained fixed rho for type2')
 ### optimization-related arguments
 parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
 parser.add_argument('--lr_factor', type=float, default=4.0, help='divide learning rate by this...')
@@ -71,7 +73,7 @@ parser.add_argument('--nonmono', type=int, default=5, help='number of bad hits a
 parser.add_argument('--wdecay', type=float, default=1.2e-6, help='some l2 regularization')
 
 parser.add_argument('--anneal_lr', type=int, default=1, help='whether to anneal the learning rate or not')
-parser.add_argument('--bow_norm', type=int, default=1, help='normalize the bows or not')
+parser.add_argument('--bow_norm', type=int, default=0, help='normalize the bows or not')
 parser.add_argument('--gpu_device', type=str, default="cuda", help='gpu device name')
 ### evaluation, visualization, and logging-related arguments
 parser.add_argument('--num_words', type=int, default=20, help='number of words for topic viz')
@@ -85,7 +87,14 @@ parser.add_argument('--td', type=int, default=0, help='whether to compute topic 
 
 args = parser.parse_args()
 
-device = torch.device(args.gpu_device if torch.cuda.is_available() else "cpu")
+device = torch.device('cuda:'+args.gpu_device if torch.cuda.is_available() else "cpu")
+args.device = device
+
+metadata = np.loadtxt(os.path.join(args.data_path+'metadata.txt'), dtype=str)
+args.code_types, vocab_size, train_embeddings, args.embedding = metadata
+args.vocab_size = [int(_) for _ in vocab_size]
+args.train_embeddings = [int(_) for _ in train_embeddings]
+args.num_times = 11
 
 print('\n')
 np.random.seed(args.seed)
@@ -95,24 +104,20 @@ if torch.cuda.is_available():
 
 
 
-embeddings1 = None
-if not args.train_embeddings1:
-    embed_file1 = os.path.join(args.data_path, args.embedding1)
-    embeddings1 = np.load(embed_file1)
-    embeddings1 = torch.from_numpy(embeddings1).to(device)
+embeddings = {}
+for i, c in enumerate(args.code_types):
+    embeddings[c] = None
+    if not args.train_embeddings[i]:
+        embed_file = os.path.join(args.data_path, args.embedding[i])
+        embeddings[c] = torch.from_numpy(np.load(embed_file)).to(device)
 
-embeddings2 = None
-if not args.train_embeddings2:
-    embed_file2 = os.path.join(args.data_path, args.embedding2)
-    embeddings2 = np.load(embed_file2)
-    embeddings2 = torch.from_numpy(embeddings2).to(device)
-
-adj_mat11 = np.load(os.path.join(args.data_path, "adj_mat11.npy"))
-adj_mat11 = torch.from_numpy(adj_mat11).float().to(device)
-adj_mat12 = np.load(os.path.join(args.data_path, "adj_mat12.npy"))
-adj_mat12 = torch.from_numpy(adj_mat12).float().to(device)
-adj_mat22 = np.load(os.path.join(args.data_path, "adj_mat22.npy"))
-adj_mat22 = torch.from_numpy(adj_mat22).float().to(device)
+# adj_mat11 = np.load(os.path.join(args.data_path, "adj_mat11.npy"))
+# adj_mat11 = torch.from_numpy(adj_mat11).float().to(device)
+# adj_mat12 = np.load(os.path.join(args.data_path, "adj_mat12.npy"))
+# adj_mat12 = torch.from_numpy(adj_mat12).float().to(device)
+# adj_mat22 = np.load(os.path.join(args.data_path, "adj_mat22.npy"))
+# adj_mat22 = torch.from_numpy(adj_mat22).float().to(device)
+constraint = {}
 
 
 ## define checkpoint
@@ -125,14 +130,14 @@ else:
     ckpt = os.path.join(args.save_path,
                         'etm_UKPD_K_{}_Htheta_{}_Optim_{}_Clip_{}_ThetaAct_{}_Lr_{}_Bsz_{}_RhoSize_{}_trainEmbeddings_{}'.format(
                             args.num_topics, args.t_hidden_size, args.optimizer, args.clip, args.theta_act,
-                            args.lr, args.batch_size, args.rho_size, args.train_embeddings1))
+                            args.lr, args.batch_size, args.rho_size, args.train_embeddings))
 
 ## define model and optimizer
-model = ETM(args.num_topics, args.num_times, args.vocab_size1, args.vocab_size2,
+model = MDETM(args.device, args.num_topics, args.num_times, args.code_types, args.vocab_size,
             args.eta_hidden_size, args.t_hidden_size, args.rho_size, args.emb_size, args.theta_act,
-            args.delta, args.nlayer, adj_mat12, adj_mat11, adj_mat22, args.lambda12,
-            args.lambda11, args.lambda22, embeddings1, embeddings2, args.train_embeddings1,
-            args.train_embeddings2, args.enc_drop, args.eta_dropout, args.upper, args.lower).to(device)
+            args.delta, args.nlayer, constraint,
+            embeddings, args.train_embeddings,
+            args.enc_drop, args.eta_dropout, args.upper, args.lower).to(device)
 
 print('model: {}'.format(model))
 
@@ -152,6 +157,7 @@ else:
 
 
 def train(epoch):
+    epoch_start_time = time.time()
     model.train()
     acc_loss = 0
     acc_kl_theta_loss = 0
@@ -167,14 +173,18 @@ def train(epoch):
     TrainDataloader = DataLoader(TrainDataset, batch_size=args.batch_size,
                                  shuffle=True, num_workers=args.num_workers)
 
+    num_batches = int(np.ceil(TrainDataset.__len__()/args.batch_size))
+    args.log_interval = int(max(num_batches/20,np.sqrt(num_batches)))
+
     for idx, (sample_batch, index) in enumerate(TrainDataloader):
         optimizer.zero_grad()
         model.zero_grad()
         data_batch = sample_batch['Data'].float().to(device)
         data_batch_t = sample_batch['Data_t'].float().to(device)
 
-        sums = data_batch.sum(1).unsqueeze(1)
         if args.bow_norm:
+            # FIXME: time-wise normalization???
+            sums = data_batch.sum(1).unsqueeze(1)+ 1e-6
             normalized_data_batch = data_batch / sums
         else:
             normalized_data_batch = data_batch
@@ -202,8 +212,6 @@ def train(epoch):
 
         cnt += 1
 
-
-
         if idx % args.log_interval == 0 and idx > 0:
             cur_loss = round(acc_loss / cnt, 2)
             cur_kl_theta = round(acc_kl_theta_loss / cnt, 2)
@@ -211,6 +219,8 @@ def train(epoch):
             cur_kl_alpha = round(acc_kl_alpha_loss / cnt, 2)
             cur_kl_eta1 = round(acc_kl_eta1_loss / cnt, 2)
             cur_con_loss = round (acc_con_loss / cnt, 2)
+
+            # FIXME: 
             # cur_kl_eta2 = round(acc_kl_eta2_loss / cnt, 2)
 
             # cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_z1 + cur_kl_z2 + cur_kl_alpha + cur_kl_eta1, 2)
@@ -219,9 +229,9 @@ def train(epoch):
             #         format(epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_kl_z1, cur_kl_z2, cur_loss,
             #                cur_kl_alpha, cur_kl_eta1, cur_real_loss))
             cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_alpha + cur_kl_eta1 + cur_con_loss, 2)
-            print('Epoch: {} .. batch: {} .. LR: {} .. KL_theta: {} .. '
+            print('Epoch: {} .. batch: {}/{} .. LR: {} .. KL_theta: {} .. '
                       'Rec_loss: {} .. KL_alpha: {} .. KL_eta_age: {} .. Con_loss: {} .. NELBO: {}'.
-                    format(epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss,
+                    format(epoch, idx, num_batches, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss,
                            cur_kl_alpha, cur_kl_eta1, cur_con_loss, cur_real_loss))
 
 
@@ -242,9 +252,9 @@ def train(epoch):
 
     cur_real_loss = round(cur_loss + cur_kl_theta + cur_kl_alpha + cur_kl_eta1 + cur_con_loss, 2)
     print('*' * 100)
-    print('Epoch----->{} .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. KL_alpha {} ..'
+    print('Epoch----->{} .time: {:.2f} s. LR: {} .. KL_theta: {} .. Rec_loss: {} .. KL_alpha {} ..'
           'KL_eta_age: {} .. Con_loss: {} .. NELBO: {}'.
-          format(epoch, optimizer.param_groups[0]['lr'], cur_kl_theta,
+          format(epoch, time.time()-epoch_start_time, optimizer.param_groups[0]['lr'], cur_kl_theta,
                                cur_loss, cur_kl_alpha, cur_kl_eta1, cur_con_loss, cur_real_loss))
     print('*' * 100)
 
@@ -267,15 +277,19 @@ def evaluate(m, tc=False, td=False):
     """
     m.eval()
     with torch.no_grad():
+        # FIXME: valid
+        # test_filename = os.path.join(args.data_path, "bow_valid.npy")
+        # test_t_filename = os.path.join(args.data_path, "bow_t_valid.npy")
         test_filename = os.path.join(args.data_path, "bow_test.npy")
         test_t_filename = os.path.join(args.data_path, "bow_t_test.npy")
+
 
 
         TestDataset = MixDataset(test_filename, test_t_filename)
         TestDataloader = DataLoader(TestDataset, batch_size=args.eval_batch_size,
                                     shuffle=True, num_workers=args.num_workers)
         alpha, _ = m.get_alpha()
-        beta1, beta2 = m.get_beta(alpha)
+        beta = m.get_beta(alpha)
 
         # eta2, _ = m.get_eta(rnn_inp_visits_test, args.num_visits)
         acc_loss = 0
@@ -286,24 +300,25 @@ def evaluate(m, tc=False, td=False):
             data_batch = sample_batch["Data"].float().to(device)
             data_batch_t = sample_batch["Data_t"].float().to(device)
             eta1, _ = m.get_eta(data_batch_t, args.num_times)
-            sums = data_batch.sum(1).unsqueeze(1)
             if args.bow_norm:
+                sums = data_batch.sum(1).unsqueeze(1) + 1e-6
                 normalized_data_batch = data_batch / sums
             else:
                 normalized_data_batch = data_batch
-            theta, _, _ = m.get_theta(eta1, normalized_data_batch)
+            # FIXME: 
+            theta, _, _, = m.get_theta(eta1, normalized_data_batch)
 
             # print("sums_2: {}".format(sums_2.squeeze()))
             # _, log_likelihood1, _, log_likelihood2 = m.decode(theta, beta1, beta2, data_batch, age)
             # recon_loss = -log_likelihood1 - log_likelihood2
-            nll1, nll2 = m.decode(theta, beta1, beta2, data_batch_t)
-            recon_loss = (nll1 + nll2) / 10
+            nll = m.decode(theta, beta, data_batch_t)
+            recon_loss = nll.sum() / m.recon_coef
 
             loss = recon_loss
             # loss = loss.mean().item()
-            acc_loss += loss
+            acc_loss += loss.item()
             cnt += 1
-        cur_loss = acc_loss / cnt
+        cur_loss = round(acc_loss / cnt, 2)
         # ppl_dc = round(math.exp(cur_loss), 1)
         print('*' * 100)
         print('Test Negative Log Likelihood: {}'.format(cur_loss))
@@ -351,7 +366,7 @@ if args.mode == 'train':
     # visualize(model)
     # print('\n')
 
-    for epoch in range(1, args.epochs):
+    for epoch in range(1, args.epochs+1):
         train(epoch)
         val_ppl, tq, tc, td = evaluate(model)
         if val_ppl < best_val_ppl or not os.path.exists(ckpt):
@@ -381,26 +396,17 @@ model.eval()
 
 
 
+print('Best Epoch: ' + str(best_epoch))
 
 alpha, _ = model.get_alpha()
-beta1, beta2 = model.get_beta(alpha)
-beta1 = beta1.detach().cpu().numpy()
-beta2 = beta2.detach().cpu().numpy()
-saved_file1 = os.path.join(args.save_path, "beta1.npy")
-np.save(saved_file1, beta1)
-saved_file2 = os.path.join(args.save_path, "beta2.npy")
-np.save(saved_file2, beta2)
-#
-#
-#
-rho1 = model.rho1.weight.detach().cpu().numpy()
-rho2 = model.rho2.weight.detach().cpu().numpy()
-saved_rho1 = os.path.join(args.save_path, "rho1.npy")
-saved_rho2 = os.path.join(args.save_path, "rho2.npy")
-saved_alpha= os.path.join(args.save_path, "alpha.npy")
-np.save(saved_rho1, rho1)
-np.save(saved_rho2, rho2)
-np.save(saved_alpha, alpha.detach().cpu().numpy())
+beta = model.get_beta(alpha)
+for i, code in enumerate(args.code_types):
+    beta[code] = beta[code].detach().cpu().numpy()
+    np.save(os.path.join(args.save_path, "beta_"+code+".npy"), beta[code])
+    rho_i = model.rho[code].weight.detach().cpu().numpy()
+    np.save(os.path.join(args.save_path, "rho_"+code+".npy"), rho_i)
+
+np.save(os.path.join(args.save_path, "alpha.npy"), alpha.detach().cpu().numpy())
 
 
 #####
@@ -421,13 +427,13 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     index_list.append(index.cpu().numpy())
     data_batch = sample_batch["Data"].float().to(device)
     data_batch_t = sample_batch["Data_t"].float().to(device)
-    eta1, _ = model.get_eta(data_batch_t, args.num_times)
-    sums = data_batch.sum(1).unsqueeze(1)
+    eta1, _ = model.get_eta(data_batch_t, args.num_times, visualize=True)
     if args.bow_norm:
+        sums = data_batch.sum(1).unsqueeze(1) + 1e-6
         normalized_data_batch = data_batch / sums
     else:
         normalized_data_batch = data_batch
-    theta, _, z = model.get_theta(eta1, normalized_data_batch)
+    theta, _, z = model.get_theta(eta1, normalized_data_batch, visualize=True)
     theta = theta.detach().cpu().numpy()
     z = z.detach().cpu().numpy()
     saved_folder = os.path.join(args.save_path, "theta_train")
@@ -461,12 +467,12 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     data_batch = sample_batch["Data"].float().to(device)
     data_batch_t = sample_batch["Data_t"].float().to(device)
     eta1, _ = model.get_eta(data_batch_t, args.num_times)
-    sums = data_batch.sum(1).unsqueeze(1)
     if args.bow_norm:
+        sums = data_batch.sum(1).unsqueeze(1)
         normalized_data_batch = data_batch / sums
     else:
         normalized_data_batch = data_batch
-    theta, _, z = model.get_theta(eta1, normalized_data_batch)
+    theta, _, z = model.get_theta(eta1, normalized_data_batch, visualize=False)
     theta = theta.detach().cpu().numpy()
     z = z.detach().cpu().numpy()
     saved_folder = os.path.join(args.save_path, "theta_test")

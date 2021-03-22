@@ -1,7 +1,17 @@
 import torch
 import numpy as np
 from torch.utils.data import Dataset
+from scipy.sparse import coo_matrix
 
+from IPython import embed
+
+def coo2tensor(coo):
+    # FIXME: not sparse tensor
+    # return torch.from_numpy(coo.toarray())
+    i = torch.LongTensor(np.vstack((coo.row, coo.col)))
+    v = torch.FloatTensor(coo.data)
+    shape = coo.shape
+    return torch.sparse.FloatTensor(i, v, torch.Size(shape))
 
 class PatientDrugDataset(Dataset):
 
@@ -37,8 +47,8 @@ class PatientDrugDataset(Dataset):
 class MixDataset(Dataset):
 
     def __init__(self, npy_file, npy_t, transform=None):
-        self.bow = np.load(npy_file)
-        self.bow_t = np.load(npy_t)
+        self.bow = np.load(npy_file, allow_pickle=True)
+        self.bow_t = np.load(npy_t, allow_pickle=True)
         self.transform = transform
 
 
@@ -51,8 +61,15 @@ class MixDataset(Dataset):
 
         data = self.bow[idx]
         data_t = self.bow_t[idx]
+        
+        if isinstance(data, coo_matrix):
+            data = coo2tensor(data)
+            data_t = coo2tensor(data_t)
+        else:
+            data = torch.from_numpy(data)
+            data_t = torch.from_numpy(data_t)
 
-        sample = {'Data': torch.from_numpy(data), 'Data_t': torch.from_numpy(data_t)}
+        sample = {'Data': data, 'Data_t': data_t}
 
 
         if self.transform:
