@@ -39,14 +39,14 @@ node2vec = Node2Vec(G, dimensions=dimensions, walk_length=walk_length, \
 	 --vocab_size1=802 --vocab_size2=443 --data_path="data/drug802_cond443" --num_topics=128 --rho_size=128 --emb_size=128 --t_hidden_size=128 --enc_drop=0.0 \
 	 --train_embeddings1=0 --embedding1="drug_emb.npy" --train_embeddings2=0 --embedding2="code_emb.npy" --rho_fixed1=1 --rho_fixed2=1`
 	 
-	 `-vocab_size1`: number of unique medication
-	 `-vocab_size2`: number of unique condition
-	 `-train_embedding1`: whether to initialize medication embedding randomly
-	 `-train_embedding2`: whether to initialize medication embedding randomly
-	 `-embedding1`: path for pretrained medication embedding
-	 `-embedding2`: path for pretrained condition embedding
-	 `-rho_fixed1`: whether to fix medication embedding during training
-	 `-rho_fixed2`: whether to fix condition embedding during training
+	 `-vocab_size1`: number of unique medication<br/>
+	 `-vocab_size2`: number of unique condition<br/>
+	 `-train_embedding1`: whether to initialize medication embedding randomly<br/>
+	 `-train_embedding2`: whether to initialize medication embedding randomly<br/>
+	 `-embedding1`: path for pretrained medication embedding<br/>
+	 `-embedding2`: path for pretrained condition embedding<br/>
+	 `-rho_fixed1`: whether to fix medication embedding during training<br/>
+	 `-rho_fixed2`: whether to fix condition embedding during training<br/>
 
 	 * Run getm with partial test information masked
 	 > `python main_multi_etm_rec.py ...`
