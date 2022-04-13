@@ -6,14 +6,21 @@ The detailed description and its application on UK-Biobank could be found [here]
 ## Contents ##
 - [Contents](#contents)
 	- [1 Model Overview](#1-model-overview)
-	- [2 Usage and Running Examples](#3-usage-and-running-example)
-	- [3 References](#4-references)
+	- [2 Requirements](#2-requirements)
+	- [3 Usage and Running Examples](#3-usage-and-running-example)
+	- [4 References](#4-references)
 
 ## 1 Model Overview
 ![](doc/methods.png "getm model overview and its application on multi-type medical features")
 **(a)** GETM training. GETM is a variational autoencoder (VAE) model. The neural network encoder takes individuals' condition and medication information as input and produces the variational mean μ and variance σ<sup>2</sup>> for the patient topic mixtures **θ**. The decoder is linear and consists of two tri-factorizations. One learns medication-defined topic embedding **α**<sup>(med)</sup> and medication embedding **ρ**<sup>(med)</sup>. The other learns condition-specific topic embedding **α**<sup>(cond)</sup> and the condition embedding **ρ**<sup>(cond)</sup>. We separately pre-train **(b)** the embedding of medications **ρ**<sup>(med)</sup> and **(c)** the embedding of conditions **ρ**<sup>(cond)</sup> using node2vec based on their structural meta-information. This is done learning the node embedding that maximizes the likelihood of the tree-structured relational graphs of conditions and medications.
 
-## 2 Usage and Running Examples
+## 2 Requirements
+The requirements.txt is located in [scripts/requirements.txt](https://github.com/li-lab-mcgill/getm/blob/main/scripts/requirements.txt)
+```
+pip install -r requirements.txt
+```
+
+## 3 Usage and Running Examples
 ### Data format
 * The getm takes a bag-of-words individual-by-med+cond numpy matrix, a medication embedding matrix and a condition embedding matrix.
 * node2vec requires a text file with format as: *node1* *node2*.
@@ -52,7 +59,7 @@ node2vec = Node2Vec(G, dimensions=dimensions, walk_length=walk_length, \
 	 > `python main_multi_etm_rec.py ...`
 
 
-## 3 References
+## 4 References
 <a id="1">[1]</a>
 Aditya Grover and Jure Leskovec. node2vec: Scalable feature learning for networks.
 CoRR, abs/1607.00653, 2016.
