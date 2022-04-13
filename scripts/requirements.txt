@@ -1,0 +1,4 @@
+dataset==1.5.2
+numpy==1.18.1
+torch==1.4.0
+utils==1.0.1
