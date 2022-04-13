@@ -21,8 +21,6 @@ parser.add_argument('--num_workers', type=int, default=0, help='number of worker
 parser.add_argument('--emb_path', type=str, default='input_data', help='directory containing embeddings')
 parser.add_argument('--ratio_file', type=str, default='binary_ratio.npy', help='weights for focal loss')
 
-# parser.add_argument('--save_path', type=str, default='./results', help='path to save results')
-
 parser.add_argument('--save_path', type=str, default='results', help='path to save results')
 
 parser.add_argument('--batch_size', type=int, default=1000, help='input batch size for training')
@@ -231,45 +229,6 @@ def train(epoch):
         print('*' * 100)
 
 
-# def visualize(m, show_emb=True):
-#     if not os.path.exists('./results'):
-#         os.makedirs('./results')
-#
-#     m.eval()
-#
-#     if args.dataset == "20ng":
-#         queries = ['andrew', 'computer', 'sports', 'religion', 'man', 'love',
-#                     'intelligence', 'money', 'politics', 'health', 'people', 'family']
-#     else:
-#         queries = ['border', 'vaccines', 'coronaviruses', 'masks']
-#
-#     ## visualize topics using monte carlo
-#     with torch.no_grad():
-#         print('#'*100)
-#         print('Visualize topics...')
-#         topics_words = []
-#         gammas = m.get_beta()
-#         for k in range(args.num_topics):
-#             gamma = gammas[k]
-#             top_words = list(gamma.cpu().numpy().argsort()[-args.num_words+1:][::-1])
-#             topic_words = [vocab[a] for a in top_words]
-#             topics_words.append(' '.join(topic_words))
-#             print('Topic {}: {}'.format(k, topic_words))
-#
-#         if show_emb:
-#             ## visualize word embeddings by using V to get nearest neighbors
-#             print('#'*100)
-#             print('Visualize word embeddings by using output embedding matrix')
-#             try:
-#                 embeddings = m.rho.weight  # Vocab_size x E
-#             except:
-#                 embeddings = m.rho         # Vocab_size x E
-#             neighbors = []
-#             for word in queries:
-#                 print('word: {} .. neighbors: {}'.format(
-#                     word, nearest_neighbors(word, embeddings, vocab)))
-#             print('#'*100)
-
 def evaluate(m, tc=False, td=False):
     """Compute perplexity on document completion.
     """
@@ -408,44 +367,6 @@ else:
 
 model.eval()
 
-# saved_nelbo = os.path.join(args.save_path,"nelbo.npy")
-# np.save(saved_nelbo, np.array(loss_epochs))
-## get document completion perplexities and topic quality
-# test_ppl, tq, tc, td = evaluate(model, 'test', tc=True, td=True)
-#
-# f=open(ckpt+'_tq.txt','w')
-# s1="Topic Quality: "+str(tq)
-# s2="Topic Coherence: "+str(tc)
-# s3="Topic Diversity: "+str(td)
-# f.write(s1+'\n'+s2+'\n'+s3+'\n')
-# f.close()
-#
-# f=open(ckpt+'_tq.txt','r')
-# [print(i,end='') for i in f.readlines()]
-# f.close()
-
-## get most used topics
-# indices = torch.tensor(range(args.num_docs_train))
-# indices = torch.split(indices, args.batch_size)
-# thetaAvg = torch.zeros(1, args.num_topics).to(device)
-# thetaWeightedAvg = torch.zeros(1, args.num_topics).to(device)
-# cnt = 0
-# for idx, ind in enumerate(indices):
-#     data_batch = data.get_batch(train_tokens, train_counts, ind, args.vocab_size, device)
-#     sums = data_batch.sum(1).unsqueeze(1)
-#     cnt += sums.sum(0).squeeze().cpu().numpy()
-#     if args.bow_norm:
-#         normalized_data_batch = data_batch / sums
-#     else:
-#         normalized_data_batch = data_batch
-#     theta, _ = model.get_theta(normalized_data_batch)
-#     thetaAvg += theta.sum(0).unsqueeze(0) / args.num_docs_train
-#     weighed_theta = sums * theta
-#     thetaWeightedAvg += weighed_theta.sum(0).unsqueeze(0)
-#     if idx % 100 == 0 and idx > 0:
-#         print('batch: {}/{}'.format(idx, len(indices)))
-# thetaWeightedAvg = thetaWeightedAvg.squeeze().detach().cpu().numpy() / cnt
-# print('\nThe 10 most used topics are {}'.format(thetaWeightedAvg.argsort()[::-1][:10]))
 
 ## show topics
 beta1, beta2 = model.get_beta()
@@ -476,7 +397,8 @@ np.save(saved_rho2, rho2)
 
 
 
-
+##############################################################################
+# Saved variables for future analysis
 saved_alpha1 = os.path.join(args.save_path, "alpha1.npy")
 alpha1 = model.alphas1.weight.detach().cpu().numpy()
 np.save(saved_alpha1, alpha1)
@@ -484,32 +406,21 @@ np.save(saved_alpha1, alpha1)
 saved_alpha2 = os.path.join(args.save_path, "alpha2.npy")
 alpha2 = model.alphas2.weight.detach().cpu().numpy()
 np.save(saved_alpha2, alpha2)
-# topic_indices = list(np.random.choice(args.num_topics, 10)) # 10 random topics
-# print('\n')
-# for k in range(args.num_topics):#topic_indices:
-#     gamma = beta[k]
-#     top_words = list(gamma.detach().cpu().numpy().argsort()[-args.num_words+1:][::-1])
-#     topic_words = [vocab[a] for a in top_words]
-#     print('Topic {}: {}'.format(k, topic_words))
+
 
 
 filename_t = os.path.join(args.data_path, f"{args.X_name}_train.npy")
 
-# filename = os.path.join("802_444_mix_data", "bow.npy")
-# filename_t = os.path.join("802_444_mix_data", "bow_t.npy")
 
 Dataset = PatientDrugDataset(filename_t)
 MyDataloader = DataLoader(Dataset, batch_size=1000,
                           shuffle=False, num_workers=args.num_workers)
-#
-# # eta2, _ = model.get_eta(rnn_inp_visits, args.num_visits)
-#
+
 index_list = []
 for idx, (sample_batch, index) in enumerate(MyDataloader):
     index_list.append(index.cpu().numpy())
     data_batch= sample_batch['Data'].float().to(device)
-    # data_batch = torch.transpose(data_batch_t, 0, 1).reshape(data_batch_t.size(0) * data_batch_t.size(1),
-    #                                                          data_batch_t.size(2))
+
     theta, _, mu_theta= model.get_theta(data_batch)
 
     theta = theta.detach().cpu().numpy()
