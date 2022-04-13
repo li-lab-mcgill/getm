@@ -63,7 +63,7 @@ node2vec = Node2Vec(G, dimensions=dimensions, walk_length=walk_length, \
 
 ## 4 File Description
 - [subjob](https://github.com/li-lab-mcgill/getm/tree/main/subjob)
-	-[run_metm.sh](https://github.com/li-lab-mcgill/getm/blob/main/subjob/run_metm.sh): bash script to run job
+	- [run_metm.sh](https://github.com/li-lab-mcgill/getm/blob/main/subjob/run_metm.sh): bash script to run job
 - [scripts](https://github.com/li-lab-mcgill/getm/tree/main/scripts)
 	- [multi_etm_sep.py](https://github.com/li-lab-mcgill/getm/blob/main/scripts/multi_etm_sep.py): GETM model script
 	- [main_multi_etm_sep.py](https://github.com/li-lab-mcgill/getm/blob/main/scripts/main_multi_etm_sep.py): The script to instantialize a GETM model, train and evaluate it
