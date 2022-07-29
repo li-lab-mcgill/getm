@@ -1,0 +1,1 @@
+python prediction.py --input_file="topic_output/theta_802443" --label_file="labels/y_cmk" --save_file="predicted/y_cmk"
