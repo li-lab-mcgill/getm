@@ -58,6 +58,7 @@ parser.add_argument('--seed', type=int, default=2020, help='random seed (default
 
 parser.add_argument('--enc_drop', type=float, default=0.1, help='dropout rate on encoder')
 parser.add_argument('--lstm_dropout', type=float, default=0.0, help='dropout rate on rnn for prediction')
+parser.add_argument('--e2e', type=int, default=0, help='whether to do e2e')
 parser.add_argument('--clip', type=float, default=2.0, help='gradient clipping')
 
 parser.add_argument('--nonmono', type=int, default=10, help='number of bad hits allowed')
@@ -281,9 +282,9 @@ def evaluate(m, tc=False, td=False):
             acc_loss += loss
             cnt += 1
         cur_loss = acc_loss / cnt
-        ppl_dc = round(math.exp(cur_loss), 1)
+
         print('*' * 100)
-        print('Test Doc Completion PPL: {}'.format(ppl_dc))
+        print('Test Loss: {}'.format(cur_loss))
         print('*' * 100)
 
         TQ = TC = TD = 0
