@@ -1,6 +1,5 @@
 import networkx as nx
 from node2vec import Node2Vec
-import pandas as pd
 import numpy as np
 
 args = argparse.ArgumentParser(description='Node2Vec')
