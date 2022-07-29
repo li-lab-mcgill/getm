@@ -4,16 +4,16 @@ import pandas as pd
 import numpy as np
 
 args = argparse.ArgumentParser(description='Node2Vec')
-args.add_argument('-graph_file', type=str, help='directory to load .txt file containing graph information')
-args.add_argument('-save_file', type=str, help='directory to save embeddings in txt files')
-args.add_argument('-node_name', type=str, help='The type of nodes, such as medication, etc.')
-args.add_argument('-walk_length', type=int, default=30)
-args.add_argument('-num_walks', type=int, default=10)
-args.add_argument('-workers', type=int, default=4)
-args.add_argument('-window', type=int, default=10)
-args.add_argument('-min_count', type=int, default=4)
-args.add_argument('-batch_words', type=int, default=4)
-args.add_argument('-dimensions', type=int, default=128)
+args.add_argument('--graph_file', type=str, help='directory to load .txt file containing graph information')
+args.add_argument('--save_file', type=str, help='directory to save embeddings in txt files')
+args.add_argument('--node_name', type=str, help='The type of nodes, such as medication, etc.')
+args.add_argument('--walk_length', type=int, default=30)
+args.add_argument('--num_walks', type=int, default=10)
+args.add_argument('--workers', type=int, default=4)
+args.add_argument('--window', type=int, default=10)
+args.add_argument('--min_count', type=int, default=4)
+args.add_argument('--batch_words', type=int, default=4)
+args.add_argument('--dimensions', type=int, default=128)
 
 def get_node_embed(graph, save_file, dimensions, walk_length, num_walks, workers,\
                  window, min_count, batch_words, node_name):
