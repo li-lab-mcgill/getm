@@ -1,0 +1,1 @@
+python node2vec.py --graph_file="graph_struc/med_graph.txt" --save_file="saved_embdding"
