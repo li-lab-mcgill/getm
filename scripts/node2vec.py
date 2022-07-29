@@ -1,6 +1,7 @@
 import networkx as nx
 from node2vec import Node2Vec
 import numpy as np
+import argparse
 
 args = argparse.ArgumentParser(description='Node2Vec')
 args.add_argument('--graph_file', type=str, help='directory to load .txt file containing graph information')
