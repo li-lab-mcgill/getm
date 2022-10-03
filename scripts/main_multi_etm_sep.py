@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser(description='The Embedded Topic Model')
 
 parser.add_argument('--data_path', type=str, default='input_data', help='directory containing data')
 parser.add_argument('--num_workers', type=int, default=0, help='number of workers to load data')
-parser.add_argument('--emb_path', type=str, default='input_data', help='directory containing embeddings')
+
 
 parser.add_argument('--save_path', type=str, default='results', help='path to save results')
 parser.add_argument('--batch_size', type=int, default=100, help='input batch size for training')
@@ -28,9 +28,7 @@ parser.add_argument('--vocab_size1', type=int, default=802, help='number of uniq
 parser.add_argument('--vocab_size2', type=int, default=443, help='number of unique conditions')
 parser.add_argument('--num_topics', type=int, default=128, help='number of topics')
 parser.add_argument('--rho_size', type=int, default=128, help='dimension of rho')
-parser.add_argument('--emb_size', type=int, default=128, help='dimension of embeddings')
 parser.add_argument('--t_hidden_size', type=int, default=64, help='dimension of hidden space of q(theta)')
-parser.add_argument('--lstm_hidden_size', type=int, default=5, help='dimension of hidden space of q(eta)')
 parser.add_argument('--theta_act', type=str, default='relu',
                     help='tanh, softplus, relu, rrelu, leakyrelu, elu, selu, glu)')
 parser.add_argument('--predcoef', type=int, default=2, help='coefficient for kl loss')
@@ -58,7 +56,6 @@ parser.add_argument('--seed', type=int, default=2020, help='random seed (default
 
 parser.add_argument('--enc_drop', type=float, default=0.1, help='dropout rate on encoder')
 parser.add_argument('--lstm_dropout', type=float, default=0.0, help='dropout rate on rnn for prediction')
-parser.add_argument('--e2e', type=int, default=0, help='whether to do e2e')
 parser.add_argument('--clip', type=float, default=2.0, help='gradient clipping')
 
 parser.add_argument('--nonmono', type=int, default=10, help='number of bad hits allowed')
@@ -101,8 +98,7 @@ if not args.train_embeddings2:
     embeddings2 = torch.from_numpy(embeddings2).float().to(device)
 
 
-if args.e2e:
-    loss_weights = np.load(os.path.join(args.data_path, args.ratio_file))
+
 
 ## define checkpoint
 if not os.path.exists(args.save_path):
@@ -117,11 +113,10 @@ else:
                             args.lr, args.batch_size, args.rho_size, args.train_embeddings1))
 
 ## define model and optimizer
-model = ETM(args.num_topics, args.num_times, args.vocab_size1, args.vocab_size2,
-            args.t_hidden_size, args.rho_size, args.emb_size, args.theta_act, args.gamma,
+model = ETM(args.num_topics, args.vocab_size1, args.vocab_size2,
+            args.t_hidden_size, args.rho_size, args.theta_act, args.predcoef,
             embeddings1, embeddings2, args.train_embeddings1, args.train_embeddings2, args.rho_fixed1,
-            args.rho_fixed2, args.enc_drop, args.e2e, args.lstm_hidden_size,
-            args.pred_nlayer, args.num_classes, args.lstm_dropout, args.predcoef).to(device)
+            args.rho_fixed2, args.enc_drop).to(device)
 
 print('model: {}'.format(model))
 
@@ -147,13 +142,10 @@ def train(epoch):
     cnt = 0
 
     train_t_filename = os.path.join(args.data_path, f"{args.X_name}_train.npy")
-    if not args.e2e:
-        y_filename = None
-        mask_filename = None
-    else:
-        y_filename = os.path.join(args.data_path, f"{args.label_name}_train.npy")
-        mask_filename = os.path.join(args.data_path, f"{args.mask_name}_train.npy")
-        acc_pred_loss = 0
+
+    y_filename = None
+    mask_filename = None
+
     TrainDataset = PatientDrugDataset(train_t_filename, y_filename, mask_filename)
     TrainDataloader = DataLoader(TrainDataset, batch_size=args.batch_size,
                                  shuffle=True, num_workers=args.num_workers)
@@ -163,22 +155,18 @@ def train(epoch):
         model.zero_grad()
         data_batch = sample_batch['Data'].float().to(device)
         # data_batch = torch.transpose(data_batch_t, 0, 1).reshape(data_batch_t.size(0)*data_batch_t.size(1), data_batch_t.size(2))
-        if args.e2e:
-            y = sample_batch["Y"].long().to(device)
-            mask = sample_batch["Mask"].to(device)
+
         sums = data_batch.sum(1).unsqueeze(1)
         if args.bow_norm:
             normalized_data_batch = data_batch / sums
         else:
             normalized_data_batch = data_batch
-        if not args.e2e:
-            recon_loss, kld_theta = model(data_batch, normalized_data_batch)
 
-            # NELBO = -(loglikelihood - KL[q||p]) = -loglikelihood + KL[q||p]
-            total_loss = recon_loss + kld_theta
-        else:
-            recon_loss, kld_theta, pred_loss = model(data_batch, normalized_data_batch, y, mask, loss_weights)
-            total_loss = recon_loss + kld_theta + pred_loss
+        recon_loss, kld_theta = model(data_batch, normalized_data_batch)
+
+        # NELBO = -(loglikelihood - KL[q||p]) = -loglikelihood + KL[q||p]
+        total_loss = recon_loss + kld_theta
+
         total_loss.backward()
 
         if args.clip > 0:
@@ -187,41 +175,28 @@ def train(epoch):
 
         acc_loss += torch.sum(recon_loss).item()
         acc_kl_theta_loss += torch.sum(kld_theta).item()
-        if args.e2e:
-            acc_pred_loss += torch.sum(pred_loss).item()
+
         cnt += 1
 
         if idx % args.log_interval == 0 and idx > 0:
             cur_loss = round(acc_loss / cnt, 2)
             cur_kl_theta = round(acc_kl_theta_loss / cnt, 2)
-            if not args.e2e:
-                cur_real_loss = round(cur_loss + cur_kl_theta, 2)
 
-                print('Epoch: {} .. batch: {}/320 .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. NELBO: {}'.format(
-                    epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss, cur_real_loss))
-            else:
-                cur_pred_loss = round(acc_pred_loss / cnt, 2)
-                cur_real_loss = round(cur_loss + cur_kl_theta + cur_pred_loss, 2)
-                print(
-                    'Epoch: {} .. batch: {}/320 .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. Pred_loss: {} .. NELBO: {}'.format(
-                        epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss, cur_pred_loss,
-                        cur_real_loss))
+            cur_real_loss = round(cur_loss + cur_kl_theta, 2)
+
+            print('Epoch: {} .. batch: {}/320 .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. NELBO: {}'.format(
+                epoch, idx, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss, cur_real_loss))
+
 
     cur_loss = round(acc_loss / cnt, 2)
     cur_kl_theta = round(acc_kl_theta_loss / cnt, 2)
-    if not args.e2e:
-        cur_real_loss = round(cur_loss + cur_kl_theta, 2)
-        print('*' * 100)
-        print('Epoch----->{} .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. NELBO: {}'.format(
-            epoch, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss, cur_real_loss))
-        print('*' * 100)
-    else:
-        cur_pred_loss = round(acc_pred_loss / cnt, 2)
-        cur_real_loss = round(cur_loss + cur_kl_theta + cur_pred_loss, 2)
-        print('*' * 100)
-        print('Epoch----->{} .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. Pred_loss: {} .. NELBO: {}'.format(
-            epoch, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss, cur_pred_loss, cur_real_loss))
-        print('*' * 100)
+
+    cur_real_loss = round(cur_loss + cur_kl_theta, 2)
+    print('*' * 100)
+    print('Epoch----->{} .. LR: {} .. KL_theta: {} .. Rec_loss: {} .. NELBO: {}'.format(
+        epoch, optimizer.param_groups[0]['lr'], cur_kl_theta, cur_loss, cur_real_loss))
+    print('*' * 100)
+
 
 
 def evaluate(m, tc=False, td=False):
@@ -231,12 +206,10 @@ def evaluate(m, tc=False, td=False):
     with torch.no_grad():
         test_t_filename = os.path.join(args.data_path, f"{args.X_name}_test.npy")
 
-        if not args.e2e:
-            y_filename = None
-            mask_filename = None
-        else:
-            y_filename = os.path.join(args.data_path, f"{args.label_name}_test.npy")
-            mask_filename = os.path.join(args.data_path, f"{args.mask_name}_test.npy")
+
+        y_filename = None
+        mask_filename = None
+
         TestDataset = PatientDrugDataset(test_t_filename, y_filename, mask_filename)
         TestDataloader = DataLoader(TestDataset, batch_size=args.eval_batch_size,
                                     shuffle=True, num_workers=args.num_workers)
@@ -249,23 +222,13 @@ def evaluate(m, tc=False, td=False):
             data_batch = sample_batch['Data'].float().to(device)
             # data_batch = torch.transpose(data_batch_t, 0, 1).reshape(data_batch_t.size(0) * data_batch_t.size(1),
             #                                                          data_batch_t.size(2))
-            if args.e2e:
-                y = sample_batch["Y"].long().to(device)
-                mask = sample_batch["Mask"].to(device)
             sums = data_batch.sum(1).unsqueeze(1)
             if args.bow_norm:
                 normalized_data_batch = data_batch / sums
             else:
                 normalized_data_batch = data_batch
             theta, _, x = m.get_theta(normalized_data_batch)
-            if args.e2e:
-                bsize = int(theta.shape[0] / args.num_times)
-                x = x.reshape(args.num_times, bsize, args.num_topics)
-                hidden = m.pred_init_hidden(bsize)
-                x, _ = m.lstm(torch.transpose(x, 0, 1), hidden)
-                x = m.linear(x)
-                y_pred = m.output(x)
-                pred_loss = m.calc_pred_loss(y, y_pred, mask, loss_weights, args.gamma)
+
 
             res1 = torch.mm(theta, beta1)
             preds1 = torch.log(res1)
@@ -275,10 +238,8 @@ def evaluate(m, tc=False, td=False):
             bows2 = data_batch[:, -args.vocab_size2:]
             recon_loss = -(preds1 * bows1).sum(1) - (preds2 * bows2).sum(1)
 
-            if not args.e2e:
-                loss = recon_loss.mean().item()
-            else:
-                loss = recon_loss.mean().item() + pred_loss
+            loss = recon_loss.mean().item()
+
             acc_loss += loss
             cnt += 1
         cur_loss = acc_loss / cnt
@@ -440,12 +401,10 @@ with open(saved_index, "wb") as f:
 
 
 filename_t = os.path.join(args.data_path, f"{args.X_name}_test.npy")
-if not args.e2e:
-    y_filename = None
-    mask_filename = None
-else:
-    y_filename = os.path.join(args.data_path, f"{args.label_name}_test.npy")
-    mask_filename = os.path.join(args.data_path, f"{args.mask_name}_test.npy")
+
+y_filename = None
+mask_filename = None
+
 Dataset = PatientDrugDataset(filename_t, y_filename, mask_filename)
 MyDataloader = DataLoader(Dataset, batch_size=1000,
                           shuffle=False, num_workers=args.num_workers)
@@ -458,17 +417,8 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     data_batch = sample_batch['Data'].float().to(device)
     # data_batch = torch.transpose(data_batch_t, 0, 1).reshape(data_batch_t.size(0) * data_batch_t.size(1),
     #                                                          data_batch_t.size(2))
-    if args.e2e:
-        y = sample_batch["Y"].long().to(device)
-        mask = sample_batch["Mask"].to(device)
+
     theta, _, mu_theta = model.get_theta(data_batch)
-    if args.e2e:
-        bsize = int(theta.shape[0] / args.num_times)
-        x = x.reshape(args.num_times, bsize, args.num_topics)
-        hidden = model.pred_init_hidden(bsize)
-        x, _ = model.lstm(torch.transpose(x, 0, 1), hidden)
-        x = model.linear(x)
-        y_pred = model.output(x)
 
 
     theta = theta.detach().cpu().numpy()
@@ -480,9 +430,6 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     saved_theta = os.path.join(saved_folder, f"theta{idx}.npy")
     saved_mu = os.path.join(saved_folder, f"mu_theta{idx}.npy")
 
-    if args.e2e:
-        saved_test = os.path.join(args.save_path, f"y_prob{idx}.npy")
-        np.save(saved_test, y_pred.detach().cpu().numpy())
     np.save(saved_theta, theta)
     np.save(saved_mu, mu_theta)
 
