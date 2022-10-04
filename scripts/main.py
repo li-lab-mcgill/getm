@@ -8,10 +8,10 @@ import numpy as np
 import os 
 import math
 from torch.utils.data import DataLoader
-from torch import nn, optim
+from torch import optim
 from etm import ETM
-from utils import nearest_neighbors, get_topic_coherence, get_topic_diversity
-from dataset import PatientDrugDataset, PatientDrugTestDataset
+from utils import get_topic_coherence, get_topic_diversity
+from scripts.dataset import PatientDrugDataset
 import pickle
 
 
