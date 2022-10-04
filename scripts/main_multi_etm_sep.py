@@ -8,8 +8,8 @@ import numpy as np
 import os
 from torch.utils.data import DataLoader
 from torch import optim
-from multi_etm_sep import ETM
-from utils import get_topic_coherence, get_topic_diversity
+from scripts.multi_etm_sep import ETM
+from scripts.utils import get_topic_coherence, get_topic_diversity
 from scripts.dataset import PatientDrugDataset
 import pickle
 
