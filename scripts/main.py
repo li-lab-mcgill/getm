@@ -9,8 +9,8 @@ import os
 import math
 from torch.utils.data import DataLoader
 from torch import optim
-from etm import ETM
-from utils import get_topic_coherence, get_topic_diversity
+from scripts.etm import ETM
+from scripts.utils import get_topic_coherence, get_topic_diversity
 from scripts.dataset import PatientDrugDataset
 import pickle
 

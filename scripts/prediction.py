@@ -20,5 +20,5 @@ lr_clf.fit(x_train, y_train)
 y_proba = lr_clf.predict_proba(x_test)[:, 1]
 y_pred = lr_clf.predict(x_test)
 
-np.save(f"{save_file}_pred.npy", y_pred)
-np.save(f"{save_file}_proba.npy", y_proba)
+np.save(f"{args.save_file}_pred.npy", y_pred)
+np.save(f"{args.save_file}_proba.npy", y_proba)

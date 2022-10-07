@@ -6,6 +6,13 @@ from torch.utils.data import Dataset
 class PatientDrugDataset(Dataset):
 
     def __init__(self, npy_file, y_file=None, mask_file=None, transform=None):
+        '''
+        Load batch data
+        :param npy_file: input data in shape of N * (M+C)
+        :param y_file: supervised label. Default is None
+        :param mask_file: feature to mask. Default is None.
+        :param transform: transform of data.
+        '''
         self.bow = np.load(npy_file)
         self.transform = transform
         if y_file:

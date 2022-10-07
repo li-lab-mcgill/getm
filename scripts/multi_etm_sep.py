@@ -155,7 +155,9 @@ class ETM(nn.Module):
         return beta
 
     def get_beta(self):
+        # medication-specific topic mixture
         beta1 = self.calc_beta(self.rho1, self.alphas1)
+        # condition-specific topic mixture
         beta2 = self.calc_beta(self.rho2, self.alphas2)
         return beta1, beta2
 
