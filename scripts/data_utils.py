@@ -108,7 +108,7 @@ def create_cond_graph(data, saved_file):
                 pairs.add((node_id, parent_id))
     pairs = list(pairs)
     df = pd.DataFrame(data={"node1": pairs[:, 0], "node2": pairs[:, 1]})
-    df.to_csv(saved_file, index=None)
+    df.to_csv(saved_file, index=None, sep=" ")
     return df
 
 def create_med_graph(atc_data, uk_med_dict, saved_file):
@@ -135,7 +135,7 @@ def create_med_graph(atc_data, uk_med_dict, saved_file):
             pairs.add((atc_code[:3], atc_code[:1]))
 
     df = pd.DataFrame(data={"node1": pairs[:, 0], "node2": pairs[:, 1]})
-    df.to_csv(saved_file, index=None)
+    df.to_csv(saved_file, index=None, sep = " ")
     return df
 
 
