@@ -165,7 +165,7 @@ class ETM(nn.Module):
         mu_theta, logsigma_theta, kld_theta = self.encode(normalized_bows)
         z = self.reparameterize(mu_theta, logsigma_theta)
         theta = F.softmax(z, dim=-1)
-        return theta, kld_theta, mu_theta
+        return theta, kld_theta, mu_theta, logsigma_theta
 
     def decode(self, theta, beta):
         res = torch.mm(theta, beta)
@@ -175,7 +175,7 @@ class ETM(nn.Module):
     def forward(self, bows, normalized_bows, y_true=None, mask=None, weights=None, theta=None, aggregate=True):
         ## get \theta
         if theta is None:
-            theta, kld_theta, x = self.get_theta(normalized_bows)
+            theta, kld_theta, x, _ = self.get_theta(normalized_bows)
         else:
             kld_theta = None
         bows1 = bows[:, :self.vocab_size1]

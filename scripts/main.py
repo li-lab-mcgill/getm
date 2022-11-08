@@ -293,7 +293,7 @@ def evaluate(m, tc=False, td=False):
                 normalized_data_batch = data_batch / sums
             else:
                 normalized_data_batch = data_batch
-            theta, _, x= m.get_theta(normalized_data_batch)
+            theta, _, x, _ = m.get_theta(normalized_data_batch)
             if args.e2e:
                 bsize = int(theta.shape[0] / args.num_times)
                 x = x.reshape(args.num_times, bsize, args.num_topics)
@@ -472,7 +472,7 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     data_batch= sample_batch['Data'].float().to(device)
     # data_batch = torch.transpose(data_batch_t, 0, 1).reshape(data_batch_t.size(0) * data_batch_t.size(1),
     #                                                          data_batch_t.size(2))
-    theta, _, mu_theta= model.get_theta(data_batch)
+    theta, _, mu_theta, _ = model.get_theta(data_batch)
 
     theta = theta.detach().cpu().numpy()
     mu_theta = mu_theta.detach().cpu().numpy()
@@ -517,7 +517,7 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
     if args.e2e:
         y = sample_batch["Y"].long().to(device)
         mask = sample_batch["Mask"].to(device)
-    theta, _, mu_theta = model.get_theta(data_batch)
+    theta, _, mu_theta, logsigma_theta = model.get_theta(data_batch)
     if args.e2e:
         bsize = int(theta.shape[0] / args.num_times)
         x = x.reshape(args.num_times, bsize, args.num_topics)
@@ -529,18 +529,21 @@ for idx, (sample_batch, index) in enumerate(MyDataloader):
 
     theta = theta.detach().cpu().numpy()
     mu_theta = mu_theta.detach().cpu().numpy()
+    logsigma_theta = logsigma_theta.detach().cpu().numpy()
 
     saved_folder = os.path.join(args.save_path, "theta_test")
     if not os.path.exists(saved_folder):
         os.makedirs(saved_folder)
     saved_theta = os.path.join(saved_folder, f"theta{idx}.npy")
     saved_mu = os.path.join(saved_folder, f"mu_theta{idx}.npy")
+    saved_log = os.path.join(saved_folder, f"log_theta{idx}.npy")
 
     if args.e2e:
         saved_test = os.path.join(args.save_path, f"y_prob{idx}.npy")
         np.save(saved_test, y_pred.detach().cpu().numpy())
     np.save(saved_theta, theta)
     np.save(saved_mu, mu_theta)
+    np.save(saved_log, logsigma_theta)
 
 saved_index = os.path.join(saved_folder, "index.pkl")
 with open(saved_index, "wb") as f:
