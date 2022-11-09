@@ -12,6 +12,7 @@ from scripts.multi_etm_sep import ETM
 from scripts.utils import get_topic_coherence, get_topic_diversity
 from scripts.dataset import PatientDrugDataset
 import pickle
+import math
 
 parser = argparse.ArgumentParser(description='The Embedded Topic Model')
 
@@ -242,6 +243,7 @@ def evaluate(m, tc=False, td=False):
             acc_loss += loss
             cnt += 1
         cur_loss = acc_loss / cnt
+        ppl_dc = round(math.exp(cur_loss), 1)
 
         print('*' * 100)
         print('Test Loss: {}'.format(cur_loss))
