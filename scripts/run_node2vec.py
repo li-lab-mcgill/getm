@@ -37,13 +37,13 @@ def get_node_embed(graph, save_file, dimensions, walk_length, num_walks, workers
     model = node2vec.fit(window=window, min_count=min_count, batch_words=batch_words)
     model.wv.save_word2vec_format(f"{save_file}/{node_name}.txt")
 
-def get_emb_arr(save_file):
+def get_emb_arr(save_file, node_name):
     '''
     Extract saved embedding from get_node_vec()
     :param save_file: path to load saved embedding from function get_node_vec()
     :return:  dictionary in format {node_id, embedding array}
     '''
-    file = open(f"{save_file}","r+")
+    file = open(f"{save_file}/{node_name}.txt","r+")
     s = file.readline()
     n, dim = list(map(int, s.split()))
     embs = {}
