@@ -15,6 +15,7 @@ args.add_argument('--min_count', type=int, default=0)
 args.add_argument('--batch_words', type=int, default=4)
 args.add_argument('--dimensions', type=int, default=128)
 
+args = args.parse_args()
 def get_node_embed(graph, save_file, dimensions, walk_length, num_walks, workers,\
                  window, min_count, batch_words, node_name):
     '''
