@@ -1,1 +1,2 @@
-python node2vec.py --graph_file="graph_struc/med_graph.txt" --save_file="saved_embdding"
+python run_node2vec.py --graph_file Simulation_data/graph_data/med_graph.txt \
+--save_file Simulation_data/graph_data --node_name 

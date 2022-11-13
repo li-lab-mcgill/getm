@@ -107,8 +107,9 @@ def create_cond_graph(data, saved_file):
             if (parent_id, node_id) not in pairs:
                 pairs.add((node_id, parent_id))
     pairs = list(pairs)
+    pairs=np.array(pairs)
     df = pd.DataFrame(data={"node1": pairs[:, 0], "node2": pairs[:, 1]})
-    df.to_csv(saved_file, index=None, sep=" ")
+    df.to_csv(saved_file, index=None, header=None, sep=" ")
     return df
 
 def create_med_graph(atc_data, uk_med_dict, saved_file):
@@ -121,21 +122,21 @@ def create_med_graph(atc_data, uk_med_dict, saved_file):
     '''
 
     pairs = set([])
-    for _, row in atc_data:
-        if len(row["code"]) == 8:
+    for _, row in atc_data.iterrows():
+        if len(row["code"]) == 7:
             atc_code = row["code"]
             name = row["name"]
-            if name in uk_med_dict:
-                code = uk_med_dict[name]
+            if atc_code in uk_med_dict:
+                code = uk_med_dict[atc_code]
             else:
                 code = atc_code
             pairs.add((code, atc_code[:5]))
             pairs.add((atc_code[:5], atc_code[:4]))
             pairs.add((atc_code[:4], atc_code[:3]))
             pairs.add((atc_code[:3], atc_code[:1]))
-
+    pairs = np.array(list(pairs))
     df = pd.DataFrame(data={"node1": pairs[:, 0], "node2": pairs[:, 1]})
-    df.to_csv(saved_file, index=None, sep = " ")
+    df.to_csv(saved_file, index=None, header=None, sep = " ")
     return df
 
 
