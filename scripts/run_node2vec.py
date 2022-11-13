@@ -69,7 +69,7 @@ def run_node2vec(args):
     G = G.to_undirected()
     get_node_embed(G, args.save_file, args.dimensions, args.walk_length, args.num_walks, args.workers,\
                  args.window, args.min_count, args.batch_words, args.node_name)
-    node_embs = get_emb_arr(args.save_file)
+    node_embs = get_emb_arr(args.save_file, args.node_name)
     np.save(f"{args.save_file}/{args.node_name}.npy", node_embs)
 
 if __name__ == '__main__':
