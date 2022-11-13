@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from collections import defaultdict
+import pickle
 
 
 
@@ -99,17 +99,27 @@ def create_cond_graph(data, saved_file):
     :param saved_file: data path to save output
     :return: condition graph data in the format of <node1, node2>
     '''
+    node_index_dict = {}
+    idx = 0
     pairs = set([])
     for _, row in data.iterrows():
         node_id = row["node_id"]
         parent_id = row["parent_id"]
+        if node_id not in node_index_dict:
+            node_index_dict[node_id] = idx
+            idx += 1
+        if parent_id not in node_index_dict:
+            node_index_dict[parent_id] = idx
+            idx += 1
         if parent_id != None:
             if (parent_id, node_id) not in pairs:
-                pairs.add((node_id, parent_id))
+                pairs.add((node_index_dict[node_id], node_index_dict[parent_id]))
     pairs = list(pairs)
     pairs=np.array(pairs)
     df = pd.DataFrame(data={"node1": pairs[:, 0], "node2": pairs[:, 1]})
-    df.to_csv(saved_file, index=None, header=None, sep=" ")
+    df.to_csv(f"{saved_file}/cond_graph.txt", index=None, header=None, sep=" ")
+    with open(f"{saved_file}/cond_index_dict.pickle", "wb") as f:
+        pickle.dump(node_index_dict, f)
     return df
 
 def create_med_graph(atc_data, uk_med_dict, saved_file):
