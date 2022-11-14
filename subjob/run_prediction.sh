@@ -1,1 +1,1 @@
-python prediction.py --input_file="topic_output/theta_802443" --label_file="labels/y_cmk" --save_file="predicted/y_cmk"
+python prediction.py --input_file="Simulation_data/prediction/X" --label_file="Simulation_data/prediction/Y" --save_file="Simulation_data/prediction/y_p"

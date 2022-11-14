@@ -3,12 +3,12 @@ import argparse
 import numpy as np
 
 args = argparse.ArgumentParser(description='Logistic model')
-args.add_Argument('--max_iter', type=int, default=1000)
-args.add_Argument('--input_file', type=int, help="directory to load X")
-args.add_Argument('--label_file', type=int, help="directory to load Y")
-args.add_Argument('--save_file', type=int, help="directory to save predicted Y")
+args.add_argument('--max_iter', type=int, default=1000)
+args.add_argument('--input_file', type=str, help="directory to load X")
+args.add_argument('--label_file', type=str, help="directory to load Y")
+args.add_argument('--save_file', type=str, help="directory to save predicted Y")
 
-
+args = args.parse_args()
 lr_clf = linear_model.LogisticRegression(max_iter=args.max_iter)
 x_train = np.load(f"{args.input_file}_train.npy")
 x_test = np.load(f"{args.input_file}_test.npy")
