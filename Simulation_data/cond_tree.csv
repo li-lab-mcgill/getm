@@ -1,0 +1,463 @@
+meaning,node_id,parent_id
+essential hypertension,1089,1081
+gestational hypertension/pre-eclampsia,1090,1081
+angina,1091,1082
+heart attack/myocardial infarction,1092,1082
+heart failure/pulmonary odema,1093,1082
+transient ischaemic attack (tia),1099,1083
+subdural haemorrhage/haematoma,1100,1083
+subarachnoid haemorrhage,1103,1098
+leg claudication/ intermittent claudication,1104,1084
+arterial embolism,1105,1084
+pulmonary embolism +/- dvt,1111,1085
+deep venous thrombosis (dvt),1112,1085
+asthma,1130,1072
+chronic obstructive airways disease/copd,1131,1072
+bronchiectasis,1133,1072
+asbestosis,1139,1134
+pulmonary fibrosis,1140,1134
+fibrosing alveolitis/unspecified alveolitis,1141,1134
+sleep apnoea,1142,1136
+respiratory failure,1143,1136
+pleurisy,1144,1136
+spontaneous pneumothorax/recurrent pneumothorax,1145,1560
+gastro-oesophageal reflux (gord) / gastric reflux,1159,1153
+oesophagitis/barretts oesophagus,1160,1153
+oesophageal stricture,1161,1153
+oesophageal varicies,1162,1153
+gastric/stomach ulcers,1163,1154
+gastritis/gastric erosions,1164,1154
+irritable bowel syndrome,1175,1155
+non-infective hepatitis,1178,1176
+bile duct obstruction/ascending cholangitis,1181,1180
+cholelithiasis/gall stones,1183,1182
+cholecystitis,1184,1182
+pancreatitis,1186,1185
+peritonitis,1211,1158
+gastrointestinal bleeding,1212,1158
+renal failure requiring dialysis,1214,1213
+renal failure not requiring dialysis,1215,1213
+kidney stone/ureter stone/bladder stone,1218,1074
+ureteric obstruction/hydronephrosis,1221,1074
+urinary frequency / incontinence,1223,1222
+scrotal problem (not cancer),1235,1231
+testicular problems (not cancer),1239,1231
+gestational diabetes,1246,1245
+type 1 diabetes,1247,1245
+type 2 diabetes,1248,1245
+hyperthyroidism/thyrotoxicosis,1250,1249
+hypothyroidism/myxoedema,1251,1249
+thyroid radioablation therapy,1253,1249
+parathyroid hyperplasia/adenoma,1255,1254
+adrenal tumour,1258,1257
+adrenocortical insufficiency/addison's disease,1259,1257
+hyperaldosteronism/conn's syndrome,1260,1257
+phaeochromocytoma,1261,1257
+pituitary adenoma/tumour,1263,1262
+cushings syndrome,1264,1075
+brain abscess/intracranial abscess,1271,1270
+encephalitis,1272,1270
+meningitis,1273,1270
+spinal abscess,1274,1270
+bell's palsy/facial nerve palsy,1276,1275
+paraplegia,1278,1277
+peripheral neuropathy,1281,1280
+acute infective polyneuritis/guillain-barre syndrome,1282,1280
+trapped nerve/compressed nerve,1283,1280
+motor neurone disease,1285,1284
+myasthenia gravis,1286,1284
+multiple sclerosis,1287,1284
+parkinsons disease,1288,1284
+dementia/alzheimers/cognitive impairment,1289,1284
+epilepsy,1290,1265
+migraine,1291,1265
+head injury,1292,1266
+spinal injury,1293,1266
+eye infection,1300,1268
+diabetic eye disease,1302,1268
+glaucoma,1303,1268
+cataract,1304,1268
+eye trauma,1305,1268
+retinal detachment,1307,1301
+retinal artery/vein occlusion,1308,1301
+anxiety/panic attacks,1313,1269
+nervous breakdown,1314,1269
+schizophrenia,1315,1269
+deliberate self-harm/suicide attempt,1316,1269
+mania/bipolar disorder/manic depression,1317,1269
+osteomyelitis,1347,1319
+osteoporosis,1348,1319
+paget's disease,1349,1319
+spine arthritis/spondylitis,1350,1320
+prolapsed disc/slipped disc,1351,1595
+ankylosing spondylitis,1352,1320
+myositis/myopathy,1361,1323
+low platelets/platelet disorder,1366,1503
+haemophilia,1367,1503
+iron deficiency anaemia,1369,1504
+pernicious anaemia,1370,1504
+aplastic anaemia,1371,1504
+sickle cell disease,1378,1509
+thalassaemia,1379,1509
+stevens johnson syndrome,1386,1513
+pemphigoid/pemphigus,1387,1513
+polycystic ovaries/polycystic ovarian syndrome,1392,1614
+uterine fibroids,1393,1615
+uterine polyps,1394,1615
+vaginal prolapse/uterine prolapse,1395,1615
+fibrocystic disease,1409,1407
+breast cysts,1410,1407
+sarcoidosis,1414,1080
+giant cell/temporal arteritis,1419,1415
+polymyalgia rheumatica,1420,1415
+wegners granulmatosis,1421,1415
+microscopic polyarteritis,1422,1415
+polyartertis nodosa,1423,1415
+systemic lupus erythematosis/sle,1424,1416
+sjogren's syndrome/sicca syndrome,1425,1416
+scleroderma/systemic sclerosis,1427,1416
+allergy or anaphylactic reaction to food,1428,1417
+allergy or anaphylactic reaction to drug,1429,1417
+hayfever/allergic rhinitis,1430,1417
+peripheral nerve injury,1438,1266
+enlarged prostate,1441,1232
+other demyelinating disease (not multiple sclerosis),1442,1284
+pneumonia,1443,1660
+peptic ulcer,1445,1158
+endometriosis,1451,1615
+female infertility,1452,1390
+male infertility,1453,1231
+muscle or soft tissue injuries,1457,1323
+burns,1458,1077
+alcohol dependency,1461,1460
+opioid dependency,1462,1460
+other substance abuse/dependency,1463,1460
+lung abscess,1464,1660
+bronchitis,1465,1132
+chronic sinusitis,1470,1467
+nasal polyps,1471,1467
+chronic laryngitis,1472,1468
+vocal cord polyp,1473,1468
+otosclerosis,1474,1469
+meniere's disease,1475,1469
+cerebral aneurysm,1480,1083
+myocarditis,1481,1082
+polycystic kidney,1482,1454
+thyroiditis,1483,1249
+acromegaly,1484,1262
+hypopituitarism,1485,1262
+hyperprolactinaemia,1486,1262
+carcinoid syndrome/tumour,1487,1075
+cerebral palsy,1488,1265
+optic neuritis,1490,1268
+headaches (not migraine),1491,1489
+myasthenia gravis,1492,1489
+polycythaemia vera,1493,1507
+hiv/aids,1748,1747
+tuberculosis (tb),1761,1758
+malaria,1763,1762
+helicobacter pylori,1760,1758
+schistosomiasis/bilharzia,1764,1762
+pancytopenia,1505,1502
+neutropenia/lymphopenia,1506,1502
+monoclonal gammopathy/not myeloma,1508,1502
+eczema/dermatitis,1511,1510
+psoriasis,1512,1510
+chronic skin ulcers,1514,1510
+malabsorption/coeliac disease,1516,1155
+duodenal ulcer,1517,1155
+diverticular disease/diverticulitis,1518,1155
+colitis/not crohns or ulcerative colitis,1519,1155
+rectal or colon adenoma/polyps,1520,1155
+crohns disease,1522,1521
+ulcerative colitis,1523,1521
+rheumatoid arthritis,1524,1321
+osteoarthritis,1525,1321
+gout,1526,1321
+diabetic neuropathy/ulcers,1528,1280
+post-traumatic stress disorder,1530,1269
+anorexia/bulimia/other eating disorder,1531,1269
+atrial fibrillation,1532,1094
+emphysema,1534,1132
+high cholesterol,1536,1071
+hiatus hernia,1537,1153
+sclerosing cholangitis,1538,1180
+sciatica,1539,1320
+psoriatic arthropathy,1540,1321
+cervical spondylosis,1541,1608
+rheumatic fever,1542,1082
+dermatomyositis,1543,1426
+polymyositis,1544,1426
+chronic fatigue syndrome,1545,1080
+atrial flutter,1546,1094
+wolff parkinson white / wpw syndrome,1547,1094
+irregular heart beat,1548,1094
+sick sinus syndrome,1549,1094
+svt / supraventricular tachycardia,1550,1094
+mitral valve prolapse,1551,1650
+mitral stenosis,1552,1650
+aortic stenosis,1553,1652
+brain haemorrhage,1554,1098
+varicose veins,1557,1556
+lymphoedema,1558,1556
+alpha-1 antitrypsin deficiency,1559,1132
+empyema,1561,1660
+labyrinthitis,1562,1469
+vertigo,1563,1469
+pyloric stenosis,1564,1154
+appendicitis,1565,1155
+anal fissure,1567,1566
+haemorrhoids / piles,1568,1566
+primary biliary cirrhosis,1569,1179
+haemochromatosis,1570,1156
+jaundice (unknown cause),1571,1156
+gastroenteritis/dysentry,1572,1158
+dyspepsia / indigestion,1573,1158
+umbilical hernia,1575,1574
+inguinal hernia,1576,1574
+cystitis,1577,1217
+pyelonephritis,1578,1217
+bph / benign prostatic hypertrophy,1579,1232
+prostatitis,1580,1232
+erectile dysfunction / impotence,1581,1231
+iga nephropathy,1583,1582
+diabetes insipidus,1584,1245
+grave's disease,1585,1249
+trigemminal neuralgia,1586,1275
+spina bifida,1587,1277
+benign / essential tremor,1588,1489
+polio / poliomyelitis,1589,1489
+retinitis pigmentosa,1590,1301
+macular degeneration,1591,1301
+dry eyes,1592,1268
+iritis,1593,1268
+post-natal depression,1594,1312
+disc degeneration,1596,1595
+back pain,1597,1320
+scoliosis,1598,1320
+spinal stenosis,1599,1320
+joint pain,1600,1527
+arthritis (nos),1601,1321
+plantar fascitis,1603,1323
+carpal tunnel syndrome,1604,1323
+fibromyalgia,1605,1323
+dupuytren's contracture,1607,1323
+essential thrombocytosis,1609,1503
+acne/acne vulgaris,1611,1510
+lichen planus,1612,1510
+lichen sclerosis,1613,1510
+cervical polyps,1618,1616
+menorrhagia (unknown cause),1619,1390
+pelvic inflammatory disease/ pid,1620,1390
+ectopic pregnancy,1622,1621
+miscarriage,1623,1621
+breast fibroadenoma,1624,1407
+raynaud's phenomenon/disease,1625,1416
+food intolerance,1626,1417
+urticaria,1627,1417
+antiphospholipid syndrome,1628,1080
+mrsa / methicillin resistant staphylococcus aureus,1759,1758
+infectious mononucleosis / glandular fever / epstein barr virus (ebv),1756,1747
+measles / morbillivirus,1750,1747
+mumps / epidemic parotitis,1757,1747
+rubella / german measles,1751,1747
+chickenpox,1753,1752
+whooping cough / pertussis,1769,1758
+shingles,1754,1752
+diphtheria,1768,1758
+herpes simplex,1755,1747
+dengue fever,1765,1762
+typhoid fever,1766,1762
+hepatitis a,1642,1177
+hepatitis b,1643,1177
+hepatitis c,1644,1177
+hepatitis d,1645,1177
+hepatitis e,1646,1177
+ischaemic stroke,1649,1098
+mitral regurgitation / incompetence,1651,1650
+aortic regurgitation / incompetence,1653,1652
+hypertrophic cardiomyopathy (hcm / hocm),1654,1096
+pericarditis,1655,1097
+pericardial effusion,1656,1097
+aortic aneurysm rupture,1657,1555
+aortic dissection,1658,1555
+varicose ulcer,1659,1556
+pleural plaques (not known asbestosis),1662,1136
+pleural effusion,1663,1136
+tinnitus / tiniitis,1664,1469
+tonsiltis,1665,1468
+constipation,1666,1155
+bowel / intestinal perforation,1667,1155
+bowel / intestinal infarction,1668,1155
+bowel / intestinal obstruction,1670,1155
+rectal prolapse,1671,1155
+alcoholic liver disease / alcoholic cirrhosis,1672,1179
+femoral hernia,1673,1574
+incisional hernia,1674,1574
+diabetic nephropathy,1675,1582
+glomerulnephritis,1677,1676
+thyroid goitre,1678,1249
+hyperparathyroidism,1679,1254
+blepharitis / eyelid infection,1681,1268
+stress,1682,1269
+obsessive compulsive disorder (ocd),1683,1269
+insomnia,1684,1269
+osteopenia,1685,1319
+tendonitis / tendinitis / tenosynovitis,1687,1686
+synovitis,1689,1686
+tennis elbow / lateral epicondylitis,1691,1690
+housemaid's knee (prepatellar bursitis),1692,1688
+cellulitis,1693,1510
+fracture skull / head,1697,1696
+fracture jaw,1698,1696
+fracture nose,1699,1696
+fracture face / orbit / eye socket,1700,1696
+fracture neck / cervical fracture,1701,1696
+fracture clavicle / collar bone,1703,1702
+fracture shoulder / scapula,1704,1702
+fracture upper arm / humerus / elbow,1705,1702
+fracture radius,1707,1706
+fracture ulna,1708,1706
+fracture wrist / colles fracture,1709,1706
+fracture hand,1710,1702
+fracture finger,1711,1702
+fracture thumb,1712,1702
+fracture rib,1717,1713
+fracture sternum,1718,1713
+fracture vertebra / crush fracture / vertebral collapse,1719,1713
+fracture pelvis,1721,1720
+fracture neck of femur / hip,1722,1720
+fracture shaft of femur,1723,1720
+fracture patella / knee,1724,1720
+fracture tibia,1726,1725
+fracture fibula,1727,1725
+fracture metatarsal,1729,1728
+fracture toe,1730,1728
+septicaemia / sepsis,1731,1495
+myelofibrosis,1732,1507
+meningioma / benign meningeal tumour,1733,1489
+rosacea,1734,1510
+vitiligo,1735,1510
+cervical erosion,1736,1616
+abnormal smear (cervix),1737,1617
+dysmenorrhoea / dysmenorrhea,1738,1390
+menopausal symptoms / menopause,1739,1390
+benign breast lump,1740,1407
+alopecia / hair loss,1741,1510
+allergy to house dust mite,1742,1417
+allergy to elastoplast,1744,1743
+allergy to nickel,1745,1743
+giardia / giardiasis,1767,1762
+yellow fever,1770,1762
+scarlet fever / scarlatina,1771,1758
+chlamydia,1772,1758
+undescended testicle,1773,1231
+bowen's disease,1776,1510
+hydatiform mole,1777,1391
+benign insulinoma,1778,1075
+benign neuroma,1779,1489
+tropical & travel-related infections,1762,1495
+bacterial infection,1758,1495
+other fractures,1713,1695
+obstetric problem,1621,1079
+fracture head & neck,1696,1695
+substance abuse/dependency,1460,1269
+hypertension,1081,1071
+venous thromboembolic disease,1085,1071
+heart arrhythmia,1094,1082
+cardiomyopathy,1096,1082
+pericardial problem,1097,1082
+stroke,1098,1083
+emphysema/chronic bronchitis,1132,1072
+interstitial lung disease,1134,1072
+oesophageal disorder,1153,1073
+stomach disorder,1154,1073
+infective/viral hepatitis,1177,1176
+liver failure/cirrhosis,1179,1156
+bile duct disease,1180,1156
+gall bladder disease,1182,1156
+pancreatic disease,1185,1156
+renal/kidney failure,1213,1074
+urinary tract infection/kidney infection,1217,1074
+bladder problem (not cancer),1222,1074
+prostate problem (not cancer),1232,1231
+diabetes,1245,1075
+thyroid problem (not cancer),1249,1075
+parathyroid gland problem (not cancer),1254,1075
+disorder of adrenal gland,1257,1075
+disorder or pituitary gland,1262,1075
+neurological injury/trauma,1266,1076
+infection of nervous system,1270,1265
+cranial nerve problem/palsy,1275,1265
+spinal cord disorder,1277,1265
+peripheral nerve disorder,1280,1265
+chronic/degenerative neurological problem,1284,1265
+retinal problem,1301,1268
+depression,1312,1269
+bone disorder,1319,1077
+ovarian cyst or cysts,1391,1614
+breast disease (not cancer),1407,1079
+vasculitis,1415,1416
+dermatopolymyositis,1426,1416
+nasal/sinus disorder,1467,1466
+throat or larynx disorder,1468,1466
+ear/vestibular disorder,1469,1466
+other neurological problem,1489,1265
+clotting disorder/excessive bleeding,1503,1502
+anaemia,1504,1502
+myeloproliferative disorder,1507,1502
+hereditary/genetic haematological disorder,1509,1502
+blistering/desquamating skin disorder,1513,1510
+inflammatory bowel disease,1521,1155
+other joint disorder,1527,1321
+aortic aneurysm,1555,1084
+other venous/lymphatic disease,1556,1071
+pneumothorax,1560,1136
+anal problem,1566,1155
+abdominal hernia,1574,1158
+kidney nephropathy,1582,1454
+disc problem,1595,1320
+neck problem/injury,1608,1077
+uterine problem,1615,1390
+cervical intra-epithelial neoplasia (cin) / precancerous cells cervix,1617,1616
+mitral valve disease,1650,1095
+aortic valve disease,1652,1095
+respiratory infection,1660,1072
+nephritis,1676,1454
+bursitis,1688,1686
+epicondylitis,1690,1686
+fracture forearm / wrist,1706,1702
+fracture lower leg / ankle,1725,1720
+fracture foot,1728,1720
+contact dermatitis,1743,1417
+varicella zoster virus,1752,1747
+dermatology,1510,1078
+bowel problem,1155,1073
+neurology,1265,1076
+other urological problem (male),1231,1074
+cerebrovascular disease,1083,1071
+haematology,1502,1078
+fracture upper limb & shoulder,1702,1695
+viral infection,1747,1495
+fracture pelvis & lower limb,1720,1695
+ent disorder/not cancer,1466,1072
+peripheral vascular disease,1084,1071
+heart valve problem/heart murmur,1095,1082
+other respiratory problems,1136,1072
+other abdominal problem,1158,1073
+hepatitis,1176,1156
+eye/eyelid problem,1268,1076
+psychological/psychiatric problem,1269,1076
+back problem,1320,1077
+joint disorder,1321,1077
+connective tissue disorder,1416,1080
+allergy/hypersensitivity/anaphylaxis,1417,1080
+other renal/kidney problem,1454,1074
+ovarian problem,1614,1390
+cervical problem,1616,1390
+soft tissue inflammation,1686,1323
+fracture,1695,1077
+heart/cardiac problem,1082,1071
+liver/biliary/pancreas problem,1156,1073
+muscle/soft tissue problem,1323,1077
+gynaecological disorder (not cancer),1390,1079
