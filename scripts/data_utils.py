@@ -33,6 +33,7 @@ def create_filtered_set(original_list, related_list):
     else:
         return list(set(original_list).difference(set(related_list)))
 
+
 def combine_data(med_data, cond_data):
     '''
     combine individuals' medication data and condition data
@@ -42,30 +43,20 @@ def combine_data(med_data, cond_data):
     '''
     med_user = set(med_data["user_id"])
     cond_user = set(cond_data["user_id"])
-    med_id_list = []
-    cond_id_list = []
-    user_ids = []
-
+    all_user = med_user.union(cond_user)
+    data = [[[], []] for _ in range(len(all_user))]
+    user_index_dict = {u: i for i, u in enumerate(list(all_user))}
     for _, row in med_data.iterrows():
-        user_id = row["user_id"]
-        user_ids.append(user_id)
-        med_id_list.append(row["med_ids"])
-        if user_id in cond_user:
-            idx = cond_data.loc[cond_data['user_id'] == user_id].index[0]
-            cond_ids = cond_data.iloc[idx]["cond_ids"]
-            cond_id_list.append(cond_ids)
-        else:
-            cond_id_list.append([])
-    cond_only_user = cond_user.difference(med_user)
-    for user in cond_only_user:
-        user_ids.append(user)
-        idx = cond_data.loc[cond_data['user_id'] == user].index[0]
-        cond_ids = cond_data.iloc[idx]["cond_ids"]
-        cond_id_list.append(cond_ids)
-        med_id_list.append([])
-    df = pd.DataFrame(data={"user_id": user_ids, "cond_ids": cond_id_list, "med_ids": med_id_list})
+        uid = user_index_dict[row["user_id"]]
+        med = row["med_ids"]
+        data[uid][0].append(med)
+    for _, row in cond_data.iterrows():
+        uid = user_index_dict[row["user_id"]]
+        cond = row["cond_ids"]
+        data[uid][1].append(cond)
+    data = np.array(data, dtype=object)
+    df = pd.DataFrame(data={"user_id": list(all_user), "med_ids": data[:, 0], "cond_ids": data[:, 1]})
     return df
-
 
 
 def create_input_file(data, med_list, cond_list):
@@ -80,7 +71,7 @@ def create_input_file(data, med_list, cond_list):
     '''
     med_idx = {k: v for v, k in enumerate(med_list)}
     cond_idx = {k: v+len(med_idx) for v, k in enumerate(cond_list)}
-    arr = np.zeros((len(data), len(med_list)+len(cond_list)))
+    arr = np.zeros((data['user_id'].nunique(), len(med_list)+len(cond_list)))
     for idx, row in data.iterrows():
         meds = row["med_ids"]
         conds = row["cond_ids"]
@@ -122,6 +113,7 @@ def create_cond_graph(data, saved_file):
         pickle.dump(node_index_dict, f)
     return df
 
+
 def create_med_graph(atc_data, uk_med_dict, saved_file):
     '''
     Create medication knwoledge graph
@@ -130,7 +122,8 @@ def create_med_graph(atc_data, uk_med_dict, saved_file):
     :param saved_file: data path to save output
     :return: medication graph data in the format of <node1, node2>
     '''
-
+    node_index_dict = {}
+    idx = 0
     pairs = set([])
     for _, row in atc_data.iterrows():
         if len(row["code"]) == 7:
@@ -140,13 +133,32 @@ def create_med_graph(atc_data, uk_med_dict, saved_file):
                 code = uk_med_dict[atc_code]
             else:
                 code = atc_code
-            pairs.add((code, atc_code[:5]))
-            pairs.add((atc_code[:5], atc_code[:4]))
-            pairs.add((atc_code[:4], atc_code[:3]))
-            pairs.add((atc_code[:3], atc_code[:1]))
+
+            if code not in node_index_dict:
+                node_index_dict[code] = idx
+                idx += 1
+            if atc_code[:5] not in node_index_dict:
+                node_index_dict[atc_code[:5]] = idx
+                idx += 1
+            if atc_code[:4] not in node_index_dict:
+                node_index_dict[atc_code[:4]] = idx
+                idx += 1
+            if atc_code[:3] not in node_index_dict:
+                node_index_dict[atc_code[:3]] = idx
+                idx += 1
+            if atc_code[:1] not in node_index_dict:
+                node_index_dict[atc_code[:1]] = idx
+                idx += 1
+
+            pairs.add((node_index_dict[code], node_index_dict[atc_code[:5]]))
+            pairs.add((node_index_dict[atc_code[:5]], node_index_dict[atc_code[:4]]))
+            pairs.add((node_index_dict[atc_code[:4]], node_index_dict[atc_code[:3]]))
+            pairs.add((node_index_dict[atc_code[:3]], node_index_dict[atc_code[:1]]))
     pairs = np.array(list(pairs))
     df = pd.DataFrame(data={"node1": pairs[:, 0], "node2": pairs[:, 1]})
-    df.to_csv(saved_file, index=None, header=None, sep = " ")
+    df.to_csv(f"{saved_file}/med_graph.txt", index=None, header=None, sep=" ")
+    with open(f"{saved_file}/med_index_dict.pickle", "wb") as f:
+        pickle.dump(node_index_dict, f)
     return df
 
 

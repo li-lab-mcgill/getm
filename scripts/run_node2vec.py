@@ -2,6 +2,7 @@ import networkx as nx
 from node2vec import Node2Vec
 import numpy as np
 import argparse
+import pickle
 
 args = argparse.ArgumentParser(description='Node2Vec')
 args.add_argument('--graph_file', type=str, help='directory to load .txt file containing graph information')
@@ -70,7 +71,8 @@ def run_node2vec(args):
     get_node_embed(G, args.save_file, args.dimensions, args.walk_length, args.num_walks, args.workers,\
                  args.window, args.min_count, args.batch_words, args.node_name)
     node_embs = get_emb_arr(args.save_file, args.node_name)
-    np.save(f"{args.save_file}/{args.node_name}.npy", node_embs)
+    with open(f"{args.save_file}/{args.node_name}.pickle", "wb") as f:
+        pickle.dump(node_embs, f)
 
 if __name__ == '__main__':
     run_node2vec(args)
