@@ -291,7 +291,7 @@ if args.mode == 'train':
     # visualize(model)
     # print('\n')
 
-    file = open(f'{args.save_path}/perplexity_{args.num_topics}.txt', 'w')
+
     for epoch in range(1, args.epochs):
         train(epoch)
         val_ppl, tq, tc, td = evaluate(model)
@@ -308,11 +308,10 @@ if args.mode == 'train':
                 optimizer.param_groups[0]['lr'] /= args.lr_factor
         # if epoch % args.visualize_every == 0:
         #     visualize(model)
-        s1 = f"Perplexity at epoch {epoch}: " + str(best_val_ppl)
-        file.write(s1 + '\n')
+
 
         all_val_ppls.append(val_ppl)
-    file.close()
+
     with open(ckpt, 'rb') as f:
         model = torch.load(f)
     model = model.to(device)
