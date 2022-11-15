@@ -1,0 +1,9 @@
+Perplexity at epoch 1: 92181.7
+Perplexity at epoch 2: 40253.3
+Perplexity at epoch 3: 33622.2
+Perplexity at epoch 4: 30235.0
+Perplexity at epoch 5: 27076.0
+Perplexity at epoch 6: 27005.9
+Perplexity at epoch 7: 25933.0
+Perplexity at epoch 8: 25489.7
+Perplexity at epoch 9: 22894.0
