@@ -16,9 +16,11 @@ y_train = np.load(f"{args.label_file}_train.npy")
 y_test = np.load(f"{args.label_file}_test.npy")
 
 lr_clf.fit(x_train, y_train)
+omega = lr_clf._coef
 
 y_proba = lr_clf.predict_proba(x_test)[:, 1]
 y_pred = lr_clf.predict(x_test)
 
 np.save(f"{args.save_file}_pred.npy", y_pred)
 np.save(f"{args.save_file}_proba.npy", y_proba)
+np.save(f"{args.save_file}_omega.npy", omega)
